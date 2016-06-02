@@ -31,7 +31,7 @@ options=(stringAsFactors=FALSE)
 
 data_dir_U133A="/media/hamel/Workspace/Projects/Brain_expression/1.Data/AD/AMP_MSBB/Raw_Data/AffymetrixHG-U133A"
 
-work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/2.Re-process_with_new_pipeline/AD/AMP_MSBB/Pre-Processing/AffymetrixHG-U133A"
+work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/1.Re-process_with_new_pipeline/AD/AMP_MSBB/Pre-Processing/AffymetrixHG-U133A"
 
 pheno_dir="/media/hamel/Workspace/Projects/Brain_expression/1.Data/AD/AMP_MSBB/Phenotype_info"
 
@@ -60,6 +60,8 @@ library(pamr)
 library(limma)
 library(sva)
 library(hgu133a.db)
+library(reshape)
+library(massiR)
 
 ###### DOWNLOAD DATA #####
 
@@ -154,16 +156,76 @@ anyDuplicated(rownames(phenotype_data))
 
 ##### GENDER CHECK ##### 
 
-# XIST:
-# 1427262_at 
-# 1427263_at 
-# 1436936_s_at
-# 1442137_at 
-# 1458435_at 
+# Tried to convert probe ID from massiR to entrez and then back to affy U133a chip - less probes hit.
+# Using directly affy_hg_u133_plus_2 probe list
+#
+#
 
-# PRKY
+head(phenotype_data_brain_region)
 
-# individual gender uknown - total 16 males and 19 females. estimatung gender based on XIST gene
+# gender_information
+gender_info<-unique(phenotype_data_brain_region[c(8,17)])
+rownames(gender_info)<-gender_info$individual_ID
+gender_info$individual_ID<-NULL
+colnames(gender_info)<-"Gender"
+table(gender_info$Gender)
+
+female_samples<-subset(gender_info, Gender=="F")
+
+male_samples<-subset(gender_info, Gender=="M")
+
+head(female_samples)
+head(male_samples)
+
+head(brain_data_normalised_as_data_frame)[1:5]
+
+# get Y choromosome genes
+data(y.probes)
+names(y.probes)
+
+y_chromo_probes <- data.frame(y.probes["affy_hg_u133_plus_2"])
+
+# extract Y chromosome genes from dataset
+eset.select.out <- massi_select(brain_data_normalised_as_data_frame, y_chromo_probes)
+
+massi_y_plot(eset.select.out)
+massi_cluster_plot(eset.select.out)
+
+# run gender predict
+eset.results <- massi_cluster(eset.select.out)
+
+#extract gender prediction
+predicted_gender<-(eset.results$massi.results)[c(1,5)]
+rownames(predicted_gender)<-predicted_gender$ID
+predicted_gender$ID<-NULL
+colnames(predicted_gender)<-"Predicted_Gender"
+
+#compare to clinical Gender
+#standardise
+
+gender_info$Gender<-as.character(gender_info$Gender)
+gender_info[gender_info$Gender=="M",]<-"male"
+gender_info[gender_info$Gender=="F",]<-"female"
+
+#merge
+gender_comparison<-merge(gender_info, predicted_gender, by="row.names")
+rownames(gender_comparison)<-gender_comparison$Row.names
+gender_comparison$Row.names<-NULL
+colnames(gender_comparison)<-c("Clinical_Gender", "Predicted_Gender")
+head(gender_comparison)
+
+#differences
+
+Gender_missmatch<-gender_comparison[which(gender_comparison$Clinical_Gender!=gender_comparison$Predicted_Gender),]
+Gender_missmatch
+
+# look at missmatch 
+
+Diagnosis[rownames(Gender_missmatch),]
+
+gender_check_results<-eset.results$massi.results
+
+gender_check_results[gender_check_results$ID %in% rownames(Gender_missmatch),]
 
 ##### PROBE ID DETECTION #####
 
@@ -310,33 +372,108 @@ dim(Amygdala_control_exprs)
 
 # dropped Amygdala
 
+# separate by gender
+Frontal_Pole_case_exprs_F<-Frontal_Pole_case_exprs[colnames(Frontal_Pole_case_exprs)%in%rownames(female_samples)]
+Precentral_Gyrus_case_exprs_F<-Precentral_Gyrus_case_exprs[colnames(Precentral_Gyrus_case_exprs)%in%rownames(female_samples)]
+Inferior_Frontal_Gyrus_case_exprs_F<-Inferior_Frontal_Gyrus_case_exprs[colnames(Inferior_Frontal_Gyrus_case_exprs)%in%rownames(female_samples)]
+Dorsolateral_Prefrontal_Cortex_case_exprs_F<-Dorsolateral_Prefrontal_Cortex_case_exprs[colnames(Dorsolateral_Prefrontal_Cortex_case_exprs)%in%rownames(female_samples)]
+Superior_Parietal_Lobule_case_exprs_F<-Superior_Parietal_Lobule_case_exprs[colnames(Superior_Parietal_Lobule_case_exprs)%in%rownames(female_samples)]
+Prefrontal_Cortex_case_exprs_F<-Prefrontal_Cortex_case_exprs[colnames(Prefrontal_Cortex_case_exprs)%in%rownames(female_samples)]
+Parahippocampal_Gyrus_case_exprs_F<-Parahippocampal_Gyrus_case_exprs[colnames(Parahippocampal_Gyrus_case_exprs)%in%rownames(female_samples)]
+Hippocampus_case_exprs_F<-Hippocampus_case_exprs[colnames(Hippocampus_case_exprs)%in%rownames(female_samples)]
+Inferior_Temporal_Gyrus_case_exprs_F<-Inferior_Temporal_Gyrus_case_exprs[colnames(Inferior_Temporal_Gyrus_case_exprs)%in%rownames(female_samples)]
+Middle_Temporal_Gyrus_case_exprs_F<-Middle_Temporal_Gyrus_case_exprs[colnames(Middle_Temporal_Gyrus_case_exprs)%in%rownames(female_samples)]
+Superior_Temporal_Gyrus_case_exprs_F<-Superior_Temporal_Gyrus_case_exprs[colnames(Superior_Temporal_Gyrus_case_exprs)%in%rownames(female_samples)]
+Temporal_Pole_case_exprs_F<-Temporal_Pole_case_exprs[colnames(Temporal_Pole_case_exprs)%in%rownames(female_samples)]
+Frontal_Pole_control_exprs_F<-Frontal_Pole_control_exprs[colnames(Frontal_Pole_control_exprs)%in%rownames(female_samples)]
+Precentral_Gyrus_control_exprs_F<-Precentral_Gyrus_control_exprs[colnames(Precentral_Gyrus_control_exprs)%in%rownames(female_samples)]
+Inferior_Frontal_Gyrus_control_exprs_F<-Inferior_Frontal_Gyrus_control_exprs[colnames(Inferior_Frontal_Gyrus_control_exprs)%in%rownames(female_samples)]
+Dorsolateral_Prefrontal_Cortex_control_exprs_F<-Dorsolateral_Prefrontal_Cortex_control_exprs[colnames(Dorsolateral_Prefrontal_Cortex_control_exprs)%in%rownames(female_samples)]
+Superior_Parietal_Lobule_control_exprs_F<-Superior_Parietal_Lobule_control_exprs[colnames(Superior_Parietal_Lobule_control_exprs)%in%rownames(female_samples)]
+Prefrontal_Cortex_control_exprs_F<-Prefrontal_Cortex_control_exprs[colnames(Prefrontal_Cortex_control_exprs)%in%rownames(female_samples)]
+Parahippocampal_Gyrus_control_exprs_F<-Parahippocampal_Gyrus_control_exprs[colnames(Parahippocampal_Gyrus_control_exprs)%in%rownames(female_samples)]
+Hippocampus_control_exprs_F<-Hippocampus_control_exprs[colnames(Hippocampus_control_exprs)%in%rownames(female_samples)]
+Inferior_Temporal_Gyrus_control_exprs_F<-Inferior_Temporal_Gyrus_control_exprs[colnames(Inferior_Temporal_Gyrus_control_exprs)%in%rownames(female_samples)]
+Middle_Temporal_Gyrus_control_exprs_F<-Middle_Temporal_Gyrus_control_exprs[colnames(Middle_Temporal_Gyrus_control_exprs)%in%rownames(female_samples)]
+Superior_Temporal_Gyrus_control_exprs_F<-Superior_Temporal_Gyrus_control_exprs[colnames(Superior_Temporal_Gyrus_control_exprs)%in%rownames(female_samples)]
+Temporal_Pole_control_exprs_F<-Temporal_Pole_control_exprs[colnames(Temporal_Pole_control_exprs)%in%rownames(female_samples)]
+
+Frontal_Pole_case_exprs_M<-Frontal_Pole_case_exprs[colnames(Frontal_Pole_case_exprs)%in%rownames(male_samples)]
+Precentral_Gyrus_case_exprs_M<-Precentral_Gyrus_case_exprs[colnames(Precentral_Gyrus_case_exprs)%in%rownames(male_samples)]
+Inferior_Frontal_Gyrus_case_exprs_M<-Inferior_Frontal_Gyrus_case_exprs[colnames(Inferior_Frontal_Gyrus_case_exprs)%in%rownames(male_samples)]
+Dorsolateral_Prefrontal_Cortex_case_exprs_M<-Dorsolateral_Prefrontal_Cortex_case_exprs[colnames(Dorsolateral_Prefrontal_Cortex_case_exprs)%in%rownames(male_samples)]
+Superior_Parietal_Lobule_case_exprs_M<-Superior_Parietal_Lobule_case_exprs[colnames(Superior_Parietal_Lobule_case_exprs)%in%rownames(male_samples)]
+Prefrontal_Cortex_case_exprs_M<-Prefrontal_Cortex_case_exprs[colnames(Prefrontal_Cortex_case_exprs)%in%rownames(male_samples)]
+Parahippocampal_Gyrus_case_exprs_M<-Parahippocampal_Gyrus_case_exprs[colnames(Parahippocampal_Gyrus_case_exprs)%in%rownames(male_samples)]
+Hippocampus_case_exprs_M<-Hippocampus_case_exprs[colnames(Hippocampus_case_exprs)%in%rownames(male_samples)]
+Inferior_Temporal_Gyrus_case_exprs_M<-Inferior_Temporal_Gyrus_case_exprs[colnames(Inferior_Temporal_Gyrus_case_exprs)%in%rownames(male_samples)]
+Middle_Temporal_Gyrus_case_exprs_M<-Middle_Temporal_Gyrus_case_exprs[colnames(Middle_Temporal_Gyrus_case_exprs)%in%rownames(male_samples)]
+Superior_Temporal_Gyrus_case_exprs_M<-Superior_Temporal_Gyrus_case_exprs[colnames(Superior_Temporal_Gyrus_case_exprs)%in%rownames(male_samples)]
+Temporal_Pole_case_exprs_M<-Temporal_Pole_case_exprs[colnames(Temporal_Pole_case_exprs)%in%rownames(male_samples)]
+Frontal_Pole_control_exprs_M<-Frontal_Pole_control_exprs[colnames(Frontal_Pole_control_exprs)%in%rownames(male_samples)]
+Precentral_Gyrus_control_exprs_M<-Precentral_Gyrus_control_exprs[colnames(Precentral_Gyrus_control_exprs)%in%rownames(male_samples)]
+Inferior_Frontal_Gyrus_control_exprs_M<-Inferior_Frontal_Gyrus_control_exprs[colnames(Inferior_Frontal_Gyrus_control_exprs)%in%rownames(male_samples)]
+Dorsolateral_Prefrontal_Cortex_control_exprs_M<-Dorsolateral_Prefrontal_Cortex_control_exprs[colnames(Dorsolateral_Prefrontal_Cortex_control_exprs)%in%rownames(male_samples)]
+Superior_Parietal_Lobule_control_exprs_M<-Superior_Parietal_Lobule_control_exprs[colnames(Superior_Parietal_Lobule_control_exprs)%in%rownames(male_samples)]
+Prefrontal_Cortex_control_exprs_M<-Prefrontal_Cortex_control_exprs[colnames(Prefrontal_Cortex_control_exprs)%in%rownames(male_samples)]
+Parahippocampal_Gyrus_control_exprs_M<-Parahippocampal_Gyrus_control_exprs[colnames(Parahippocampal_Gyrus_control_exprs)%in%rownames(male_samples)]
+Hippocampus_control_exprs_M<-Hippocampus_control_exprs[colnames(Hippocampus_control_exprs)%in%rownames(male_samples)]
+Inferior_Temporal_Gyrus_control_exprs_M<-Inferior_Temporal_Gyrus_control_exprs[colnames(Inferior_Temporal_Gyrus_control_exprs)%in%rownames(male_samples)]
+Middle_Temporal_Gyrus_control_exprs_M<-Middle_Temporal_Gyrus_control_exprs[colnames(Middle_Temporal_Gyrus_control_exprs)%in%rownames(male_samples)]
+Superior_Temporal_Gyrus_control_exprs_M<-Superior_Temporal_Gyrus_control_exprs[colnames(Superior_Temporal_Gyrus_control_exprs)%in%rownames(male_samples)]
+Temporal_Pole_control_exprs_M<-Temporal_Pole_control_exprs[colnames(Temporal_Pole_control_exprs)%in%rownames(male_samples)]
+
 # check all data frames
-head(Frontal_Pole_case_exprs)[1:5]
-head(Precentral_Gyrus_case_exprs)[1:5]
-head(Inferior_Frontal_Gyrus_case_exprs)[1:5]
-head(Dorsolateral_Prefrontal_Cortex_case_exprs)[1:5]
-head(Superior_Parietal_Lobule_case_exprs)[1:5]
-head(Prefrontal_Cortex_case_exprs)[1:5]
-head(Parahippocampal_Gyrus_case_exprs)[1:5]
-head(Hippocampus_case_exprs)[1:5]
-head(Inferior_Temporal_Gyrus_case_exprs)[1:5]
-head(Middle_Temporal_Gyrus_case_exprs)[1:5]
-head(Superior_Temporal_Gyrus_case_exprs)[1:5]
-head(Temporal_Pole_case_exprs)[1:5]
+head(Frontal_Pole_case_exprs_F)[1:5]
+head(Precentral_Gyrus_case_exprs_F)[1:5]
+head(Inferior_Frontal_Gyrus_case_exprs_F)[1:5]
+head(Dorsolateral_Prefrontal_Cortex_case_exprs_F)[1:5]
+head(Superior_Parietal_Lobule_case_exprs_F)[1:5]
+head(Prefrontal_Cortex_case_exprs_F)[1:5]
+head(Parahippocampal_Gyrus_case_exprs_F)[1:5]
+head(Hippocampus_case_exprs_F)[1:5]
+head(Inferior_Temporal_Gyrus_case_exprs_F)[1:5]
+head(Middle_Temporal_Gyrus_case_exprs_F)[1:5]
+head(Superior_Temporal_Gyrus_case_exprs_F)[1:5]
+head(Temporal_Pole_case_exprs_F)[1:5]
+head(Frontal_Pole_control_exprs_F)[1:5]
+head(Precentral_Gyrus_control_exprs_F)[1:5]
+head(Inferior_Frontal_Gyrus_control_exprs_F)[1:5]
+head(Dorsolateral_Prefrontal_Cortex_control_exprs_F)[1:5]
+head(Superior_Parietal_Lobule_control_exprs_F)[1:5]
+head(Prefrontal_Cortex_control_exprs_F)[1:5]
+head(Parahippocampal_Gyrus_control_exprs_F)[1:5]
+head(Hippocampus_control_exprs_F)[1:5]
+head(Inferior_Temporal_Gyrus_control_exprs_F)[1:5]
+head(Middle_Temporal_Gyrus_control_exprs_F)[1:5]
+head(Superior_Temporal_Gyrus_control_exprs_F)[1:5]
+head(Temporal_Pole_control_exprs_F)[1:5]
 
-head(Frontal_Pole_control_exprs)[1:5]
-head(Precentral_Gyrus_control_exprs)[1:5]
-head(Inferior_Frontal_Gyrus_control_exprs)[1:5]
-head(Dorsolateral_Prefrontal_Cortex_control_exprs)[1:5]
-head(Superior_Parietal_Lobule_control_exprs)[1:5]
-head(Prefrontal_Cortex_control_exprs)[1:5]
-head(Parahippocampal_Gyrus_control_exprs)[1:5]
-head(Hippocampus_control_exprs)[1:5]
-head(Inferior_Temporal_Gyrus_control_exprs)[1:5]
-head(Middle_Temporal_Gyrus_control_exprs)[1:5]
-head(Superior_Temporal_Gyrus_control_exprs)[1:5]
-head(Temporal_Pole_control_exprs)[1:5]
 
+head(Frontal_Pole_case_exprs_M)[1:5]
+head(Precentral_Gyrus_case_exprs_M)[1:5]
+head(Inferior_Frontal_Gyrus_case_exprs_M)[1:5]
+head(Dorsolateral_Prefrontal_Cortex_case_exprs_M)[1:5]
+head(Superior_Parietal_Lobule_case_exprs_M)[1:5]
+head(Prefrontal_Cortex_case_exprs_M)[1:5]
+head(Parahippocampal_Gyrus_case_exprs_M)[1:5]
+head(Hippocampus_case_exprs_M)[1:5]
+head(Inferior_Temporal_Gyrus_case_exprs_M)[1:5]
+head(Middle_Temporal_Gyrus_case_exprs_M)[1:5]
+head(Superior_Temporal_Gyrus_case_exprs_M)[1:5]
+head(Temporal_Pole_case_exprs_M)[1:5]
+head(Frontal_Pole_control_exprs_M)[1:5]
+head(Precentral_Gyrus_control_exprs_M)
+head(Inferior_Frontal_Gyrus_control_exprs_M)
+head(Dorsolateral_Prefrontal_Cortex_control_exprs_M)[1:5]
+head(Superior_Parietal_Lobule_control_exprs_M)
+head(Prefrontal_Cortex_control_exprs_M)
+head(Parahippocampal_Gyrus_control_exprs_M)
+head(Hippocampus_control_exprs_M)
+head(Inferior_Temporal_Gyrus_control_exprs_M)
+head(Middle_Temporal_Gyrus_control_exprs_M)
+head(Superior_Temporal_Gyrus_control_exprs_M)
+head(Temporal_Pole_control_exprs_M)
 
 # calculate 90th percentile for each sample in each group
 
@@ -359,160 +496,209 @@ extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_th
   colnames(dataset_count)<-"count"
   # subset good probes
   good_probes<-rownames(subset(dataset_count, dataset_count$count >= (number_of_samples*sample_threshold)))
+  #print threshold used
+  print(as.data.frame(sample_quantiles))
+  boxplot(as.data.frame(sample_quantiles))
   # return good probes
   return(good_probes)
 }
 
-# apply function - case
+# apply function 
 
-Frontal_Pole_case_expressed_probes_list<-extract_good_probe_list(Frontal_Pole_case_exprs, 0.9, 0.8)
-head(Frontal_Pole_case_expressed_probes_list)
-length(Frontal_Pole_case_expressed_probes_list)
-nrow(Frontal_Pole_case_exprs)
+Frontal_Pole_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Frontal_Pole_case_exprs_F, 0.9, 0.8)
+length(Frontal_Pole_case_exprs_F_expressed_probes_list)
 
-Precentral_Gyrus_case_expressed_probes_list<-extract_good_probe_list(Precentral_Gyrus_case_exprs, 0.9, 0.8)
-head(Precentral_Gyrus_case_expressed_probes_list)
-length(Precentral_Gyrus_case_expressed_probes_list)
-nrow(Precentral_Gyrus_case_exprs)
+Precentral_Gyrus_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Precentral_Gyrus_case_exprs_F, 0.9, 0.8)
+length(Precentral_Gyrus_case_exprs_F_expressed_probes_list)
 
-Inferior_Frontal_Gyrus_case_expressed_probes_list<-extract_good_probe_list(Inferior_Frontal_Gyrus_case_exprs, 0.9, 0.8)
-head(Inferior_Frontal_Gyrus_case_expressed_probes_list)
-length(Inferior_Frontal_Gyrus_case_expressed_probes_list)
-nrow(Inferior_Frontal_Gyrus_case_exprs)
+Inferior_Frontal_Gyrus_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Inferior_Frontal_Gyrus_case_exprs_F, 0.9, 0.8)
+length(Inferior_Frontal_Gyrus_case_exprs_F_expressed_probes_list)
 
-Dorsolateral_Prefrontal_Cortex_case_expressed_probes_list<-extract_good_probe_list(Dorsolateral_Prefrontal_Cortex_case_exprs, 0.9, 0.8)
-head(Dorsolateral_Prefrontal_Cortex_case_expressed_probes_list)
-length(Dorsolateral_Prefrontal_Cortex_case_expressed_probes_list)
-nrow(Dorsolateral_Prefrontal_Cortex_case_exprs)
+Dorsolateral_Prefrontal_Cortex_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Dorsolateral_Prefrontal_Cortex_case_exprs_F, 0.9, 0.8)
+length(Dorsolateral_Prefrontal_Cortex_case_exprs_F_expressed_probes_list)
 
-Superior_Parietal_Lobule_case_expressed_probes_list<-extract_good_probe_list(Superior_Parietal_Lobule_case_exprs, 0.9, 0.8)
-head(Superior_Parietal_Lobule_case_expressed_probes_list)
-length(Superior_Parietal_Lobule_case_expressed_probes_list)
-nrow(Superior_Parietal_Lobule_case_exprs)
+Superior_Parietal_Lobule_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Superior_Parietal_Lobule_case_exprs_F, 0.9, 0.8)
+length(Superior_Parietal_Lobule_case_exprs_F_expressed_probes_list)
 
-Prefrontal_Cortex_case_expressed_probes_list<-extract_good_probe_list(Prefrontal_Cortex_case_exprs, 0.9, 0.8)
-head(Prefrontal_Cortex_case_expressed_probes_list)
-length(Prefrontal_Cortex_case_expressed_probes_list)
-nrow(Prefrontal_Cortex_case_exprs)
+Prefrontal_Cortex_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Prefrontal_Cortex_case_exprs_F, 0.9, 0.8)
+length(Prefrontal_Cortex_case_exprs_F_expressed_probes_list)
 
-Parahippocampal_Gyrus_case_expressed_probes_list<-extract_good_probe_list(Parahippocampal_Gyrus_case_exprs, 0.9, 0.8)
-head(Parahippocampal_Gyrus_case_expressed_probes_list)
-length(Parahippocampal_Gyrus_case_expressed_probes_list)
-nrow(Parahippocampal_Gyrus_case_exprs)
+Parahippocampal_Gyrus_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Parahippocampal_Gyrus_case_exprs_F, 0.9, 0.8)
+length(Parahippocampal_Gyrus_case_exprs_F_expressed_probes_list)
 
-Hippocampus_case_expressed_probes_list<-extract_good_probe_list(Hippocampus_case_exprs, 0.9, 0.8)
-head(Hippocampus_case_expressed_probes_list)
-length(Hippocampus_case_expressed_probes_list)
-nrow(Hippocampus_case_exprs)
+Hippocampus_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Hippocampus_case_exprs_F, 0.9, 0.8)
+length(Hippocampus_case_exprs_F_expressed_probes_list)
 
-Inferior_Temporal_Gyrus_case_expressed_probes_list<-extract_good_probe_list(Inferior_Temporal_Gyrus_case_exprs, 0.9, 0.8)
-head(Inferior_Temporal_Gyrus_case_expressed_probes_list)
-length(Inferior_Temporal_Gyrus_case_expressed_probes_list)
-nrow(Inferior_Temporal_Gyrus_case_exprs)
+Inferior_Temporal_Gyrus_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Inferior_Temporal_Gyrus_case_exprs_F, 0.9, 0.8)
+length(Inferior_Temporal_Gyrus_case_exprs_F_expressed_probes_list)
 
-Middle_Temporal_Gyrus_case_expressed_probes_list<-extract_good_probe_list(Middle_Temporal_Gyrus_case_exprs, 0.9, 0.8)
-head(Middle_Temporal_Gyrus_case_expressed_probes_list)
-length(Middle_Temporal_Gyrus_case_expressed_probes_list)
-nrow(Middle_Temporal_Gyrus_case_exprs)
+Middle_Temporal_Gyrus_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Middle_Temporal_Gyrus_case_exprs_F, 0.9, 0.8)
+length(Middle_Temporal_Gyrus_case_exprs_F_expressed_probes_list)
 
-Superior_Temporal_Gyrus_case_expressed_probes_list<-extract_good_probe_list(Superior_Temporal_Gyrus_case_exprs, 0.9, 0.8)
-head(Superior_Temporal_Gyrus_case_expressed_probes_list)
-length(Superior_Temporal_Gyrus_case_expressed_probes_list)
-nrow(Superior_Temporal_Gyrus_case_exprs)
+Superior_Temporal_Gyrus_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Superior_Temporal_Gyrus_case_exprs_F, 0.9, 0.8)
+length(Superior_Temporal_Gyrus_case_exprs_F_expressed_probes_list)
 
-Temporal_Pole_case_expressed_probes_list<-extract_good_probe_list(Temporal_Pole_case_exprs, 0.9, 0.8)
-head(Temporal_Pole_case_expressed_probes_list)
-length(Temporal_Pole_case_expressed_probes_list)
-nrow(Temporal_Pole_case_exprs)
+Temporal_Pole_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Temporal_Pole_case_exprs_F, 0.9, 0.8)
+length(Temporal_Pole_case_exprs_F_expressed_probes_list)
 
-#apply function to control
+Frontal_Pole_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Frontal_Pole_control_exprs_F, 0.9, 0.8)
+length(Frontal_Pole_control_exprs_F_expressed_probes_list)
 
-Frontal_Pole_control_expressed_probes_list<-extract_good_probe_list(Frontal_Pole_control_exprs, 0.9, 0.8)
-head(Frontal_Pole_control_expressed_probes_list)
-length(Frontal_Pole_control_expressed_probes_list)
-nrow(Frontal_Pole_control_exprs)
+Precentral_Gyrus_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Precentral_Gyrus_control_exprs_F, 0.9, 0.8)
+length(Precentral_Gyrus_control_exprs_F_expressed_probes_list)
 
-Precentral_Gyrus_control_expressed_probes_list<-extract_good_probe_list(Precentral_Gyrus_control_exprs, 0.9, 0.8)
-head(Precentral_Gyrus_control_expressed_probes_list)
-length(Precentral_Gyrus_control_expressed_probes_list)
-nrow(Precentral_Gyrus_control_exprs)
+Inferior_Frontal_Gyrus_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Inferior_Frontal_Gyrus_control_exprs_F, 0.9, 0.8)
+length(Inferior_Frontal_Gyrus_control_exprs_F_expressed_probes_list)
 
-Inferior_Frontal_Gyrus_control_expressed_probes_list<-extract_good_probe_list(Inferior_Frontal_Gyrus_control_exprs, 0.9, 0.8)
-head(Inferior_Frontal_Gyrus_control_expressed_probes_list)
-length(Inferior_Frontal_Gyrus_control_expressed_probes_list)
-nrow(Inferior_Frontal_Gyrus_control_exprs)
+Dorsolateral_Prefrontal_Cortex_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Dorsolateral_Prefrontal_Cortex_control_exprs_F, 0.9, 0.8)
+length(Dorsolateral_Prefrontal_Cortex_control_exprs_F_expressed_probes_list)
 
-Dorsolateral_Prefrontal_Cortex_control_expressed_probes_list<-extract_good_probe_list(Dorsolateral_Prefrontal_Cortex_control_exprs, 0.9, 0.8)
-head(Dorsolateral_Prefrontal_Cortex_control_expressed_probes_list)
-length(Dorsolateral_Prefrontal_Cortex_control_expressed_probes_list)
-nrow(Dorsolateral_Prefrontal_Cortex_control_exprs)
+Superior_Parietal_Lobule_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Superior_Parietal_Lobule_control_exprs_F, 0.9, 0.8)
+length(Superior_Parietal_Lobule_control_exprs_F_expressed_probes_list)
 
-Superior_Parietal_Lobule_control_expressed_probes_list<-extract_good_probe_list(Superior_Parietal_Lobule_control_exprs, 0.9, 0.8)
-head(Superior_Parietal_Lobule_control_expressed_probes_list)
-length(Superior_Parietal_Lobule_control_expressed_probes_list)
-nrow(Superior_Parietal_Lobule_control_exprs)
+Prefrontal_Cortex_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Prefrontal_Cortex_control_exprs_F, 0.9, 0.8)
+length(Prefrontal_Cortex_control_exprs_F_expressed_probes_list)
 
-Prefrontal_Cortex_control_expressed_probes_list<-extract_good_probe_list(Prefrontal_Cortex_control_exprs, 0.9, 0.8)
-head(Prefrontal_Cortex_control_expressed_probes_list)
-length(Prefrontal_Cortex_control_expressed_probes_list)
-nrow(Prefrontal_Cortex_control_exprs)
+Parahippocampal_Gyrus_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Parahippocampal_Gyrus_control_exprs_F, 0.9, 0.8)
+length(Parahippocampal_Gyrus_control_exprs_F_expressed_probes_list)
 
-Parahippocampal_Gyrus_control_expressed_probes_list<-extract_good_probe_list(Parahippocampal_Gyrus_control_exprs, 0.9, 0.8)
-head(Parahippocampal_Gyrus_control_expressed_probes_list)
-length(Parahippocampal_Gyrus_control_expressed_probes_list)
-nrow(Parahippocampal_Gyrus_control_exprs)
+Hippocampus_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Hippocampus_control_exprs_F, 0.9, 0.8)
+length(Hippocampus_control_exprs_F_expressed_probes_list)
 
-Hippocampus_control_expressed_probes_list<-extract_good_probe_list(Hippocampus_control_exprs, 0.9, 0.8)
-head(Hippocampus_control_expressed_probes_list)
-length(Hippocampus_control_expressed_probes_list)
-nrow(Hippocampus_control_exprs)
+Inferior_Temporal_Gyrus_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Inferior_Temporal_Gyrus_control_exprs_F, 0.9, 0.8)
+length(Inferior_Temporal_Gyrus_control_exprs_F_expressed_probes_list)
 
-Inferior_Temporal_Gyrus_control_expressed_probes_list<-extract_good_probe_list(Inferior_Temporal_Gyrus_control_exprs, 0.9, 0.8)
-head(Inferior_Temporal_Gyrus_control_expressed_probes_list)
-length(Inferior_Temporal_Gyrus_control_expressed_probes_list)
-nrow(Inferior_Temporal_Gyrus_control_exprs)
+Middle_Temporal_Gyrus_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Middle_Temporal_Gyrus_control_exprs_F, 0.9, 0.8)
+length(Middle_Temporal_Gyrus_control_exprs_F_expressed_probes_list)
 
-Middle_Temporal_Gyrus_control_expressed_probes_list<-extract_good_probe_list(Middle_Temporal_Gyrus_control_exprs, 0.9, 0.8)
-head(Middle_Temporal_Gyrus_control_expressed_probes_list)
-length(Middle_Temporal_Gyrus_control_expressed_probes_list)
-nrow(Middle_Temporal_Gyrus_control_exprs)
+Superior_Temporal_Gyrus_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Superior_Temporal_Gyrus_control_exprs_F, 0.9, 0.8)
+length(Superior_Temporal_Gyrus_control_exprs_F_expressed_probes_list)
 
-Superior_Temporal_Gyrus_control_expressed_probes_list<-extract_good_probe_list(Superior_Temporal_Gyrus_control_exprs, 0.9, 0.8)
-head(Superior_Temporal_Gyrus_control_expressed_probes_list)
-length(Superior_Temporal_Gyrus_control_expressed_probes_list)
-nrow(Superior_Temporal_Gyrus_control_exprs)
+Temporal_Pole_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Temporal_Pole_control_exprs_F, 0.9, 0.8)
+length(Temporal_Pole_control_exprs_F_expressed_probes_list)
 
-Temporal_Pole_control_expressed_probes_list<-extract_good_probe_list(Temporal_Pole_control_exprs, 0.9, 0.8)
-head(Temporal_Pole_control_expressed_probes_list)
-length(Temporal_Pole_control_expressed_probes_list)
-nrow(Temporal_Pole_control_exprs)
+Frontal_Pole_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Frontal_Pole_case_exprs_M, 0.9, 0.8)
+length(Frontal_Pole_case_exprs_M_expressed_probes_list)
+
+Precentral_Gyrus_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Precentral_Gyrus_case_exprs_M, 0.9, 0.8)
+length(Precentral_Gyrus_case_exprs_M_expressed_probes_list)
+
+Inferior_Frontal_Gyrus_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Inferior_Frontal_Gyrus_case_exprs_M, 0.9, 0.8)
+length(Inferior_Frontal_Gyrus_case_exprs_M_expressed_probes_list)
+
+Dorsolateral_Prefrontal_Cortex_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Dorsolateral_Prefrontal_Cortex_case_exprs_M, 0.9, 0.8)
+length(Dorsolateral_Prefrontal_Cortex_case_exprs_M_expressed_probes_list)
+
+Superior_Parietal_Lobule_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Superior_Parietal_Lobule_case_exprs_M, 0.9, 0.8)
+length(Superior_Parietal_Lobule_case_exprs_M_expressed_probes_list)
+
+Prefrontal_Cortex_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Prefrontal_Cortex_case_exprs_M, 0.9, 0.8)
+length(Prefrontal_Cortex_case_exprs_M_expressed_probes_list)
+
+Parahippocampal_Gyrus_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Parahippocampal_Gyrus_case_exprs_M, 0.9, 0.8)
+length(Parahippocampal_Gyrus_case_exprs_M_expressed_probes_list)
+
+Hippocampus_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Hippocampus_case_exprs_M, 0.9, 0.8)
+length(Hippocampus_case_exprs_M_expressed_probes_list)
+
+Inferior_Temporal_Gyrus_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Inferior_Temporal_Gyrus_case_exprs_M, 0.9, 0.8)
+length(Inferior_Temporal_Gyrus_case_exprs_M_expressed_probes_list)
+
+Middle_Temporal_Gyrus_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Middle_Temporal_Gyrus_case_exprs_M, 0.9, 0.8)
+length(Middle_Temporal_Gyrus_case_exprs_M_expressed_probes_list)
+
+Superior_Temporal_Gyrus_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Superior_Temporal_Gyrus_case_exprs_M, 0.9, 0.8)
+length(Superior_Temporal_Gyrus_case_exprs_M_expressed_probes_list)
+
+Temporal_Pole_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Temporal_Pole_case_exprs_M, 0.9, 0.8)
+length(Temporal_Pole_case_exprs_M_expressed_probes_list)
+
+Frontal_Pole_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Frontal_Pole_control_exprs_M, 0.9, 0.8)
+length(Frontal_Pole_control_exprs_M_expressed_probes_list)
+
+Precentral_Gyrus_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Precentral_Gyrus_control_exprs_M, 0.9, 0.8)
+length(Precentral_Gyrus_control_exprs_M_expressed_probes_list)
+
+Inferior_Frontal_Gyrus_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Inferior_Frontal_Gyrus_control_exprs_M, 0.9, 0.8)
+length(Inferior_Frontal_Gyrus_control_exprs_M_expressed_probes_list)
+
+Dorsolateral_Prefrontal_Cortex_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Dorsolateral_Prefrontal_Cortex_control_exprs_M, 0.9, 0.8)
+length(Dorsolateral_Prefrontal_Cortex_control_exprs_M_expressed_probes_list)
+
+Superior_Parietal_Lobule_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Superior_Parietal_Lobule_control_exprs_M, 0.9, 0.8)
+length(Superior_Parietal_Lobule_control_exprs_M_expressed_probes_list)
+
+Prefrontal_Cortex_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Prefrontal_Cortex_control_exprs_M, 0.9, 0.8)
+length(Prefrontal_Cortex_control_exprs_M_expressed_probes_list)
+
+Parahippocampal_Gyrus_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Parahippocampal_Gyrus_control_exprs_M, 0.9, 0.8)
+length(Parahippocampal_Gyrus_control_exprs_M_expressed_probes_list)
+
+Hippocampus_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Hippocampus_control_exprs_M, 0.9, 0.8)
+length(Hippocampus_control_exprs_M_expressed_probes_list)
+
+Inferior_Temporal_Gyrus_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Inferior_Temporal_Gyrus_control_exprs_M, 0.9, 0.8)
+length(Inferior_Temporal_Gyrus_control_exprs_M_expressed_probes_list)
+
+Middle_Temporal_Gyrus_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Middle_Temporal_Gyrus_control_exprs_M, 0.9, 0.8)
+length(Middle_Temporal_Gyrus_control_exprs_M_expressed_probes_list)
+
+Superior_Temporal_Gyrus_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Superior_Temporal_Gyrus_control_exprs_M, 0.9, 0.8)
+length(Superior_Temporal_Gyrus_control_exprs_M_expressed_probes_list)
+
+Temporal_Pole_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Temporal_Pole_control_exprs_M, 0.9, 0.8)
+length(Temporal_Pole_control_exprs_M_expressed_probes_list)
 
 # merge list of good probes from both case + control + and all brain regions, sort and keep unique values
 
-good_probe_list<-unique(sort(c(Frontal_Pole_case_expressed_probes_list,
-                               Precentral_Gyrus_case_expressed_probes_list,
-                               Inferior_Frontal_Gyrus_case_expressed_probes_list,
-                               Dorsolateral_Prefrontal_Cortex_case_expressed_probes_list,
-                               Superior_Parietal_Lobule_case_expressed_probes_list,
-                               Prefrontal_Cortex_case_expressed_probes_list,
-                               Parahippocampal_Gyrus_case_expressed_probes_list,
-                               Hippocampus_case_expressed_probes_list,
-                               Inferior_Temporal_Gyrus_case_expressed_probes_list,
-                               Middle_Temporal_Gyrus_case_expressed_probes_list,
-                               Superior_Temporal_Gyrus_case_expressed_probes_list,
-                               Temporal_Pole_case_expressed_probes_list,
-                               Frontal_Pole_control_expressed_probes_list,
-                               Precentral_Gyrus_control_expressed_probes_list,
-                               Inferior_Frontal_Gyrus_control_expressed_probes_list,
-                               Dorsolateral_Prefrontal_Cortex_control_expressed_probes_list,
-                               Superior_Parietal_Lobule_control_expressed_probes_list,
-                               Prefrontal_Cortex_control_expressed_probes_list,
-                               Parahippocampal_Gyrus_control_expressed_probes_list,
-                               Hippocampus_control_expressed_probes_list,
-                               Inferior_Temporal_Gyrus_control_expressed_probes_list,
-                               Middle_Temporal_Gyrus_control_expressed_probes_list,
-                               Superior_Temporal_Gyrus_control_expressed_probes_list,
-                               Temporal_Pole_control_expressed_probes_list)))
+good_probe_list<-unique(sort(c(Frontal_Pole_case_exprs_F_expressed_probes_list,
+                               Precentral_Gyrus_case_exprs_F_expressed_probes_list,
+                               Inferior_Frontal_Gyrus_case_exprs_F_expressed_probes_list,
+                               Dorsolateral_Prefrontal_Cortex_case_exprs_F_expressed_probes_list,
+                               Superior_Parietal_Lobule_case_exprs_F_expressed_probes_list,
+                               Prefrontal_Cortex_case_exprs_F_expressed_probes_list,
+                               Parahippocampal_Gyrus_case_exprs_F_expressed_probes_list,
+                               Hippocampus_case_exprs_F_expressed_probes_list,
+                               Inferior_Temporal_Gyrus_case_exprs_F_expressed_probes_list,
+                               Middle_Temporal_Gyrus_case_exprs_F_expressed_probes_list,
+                               Superior_Temporal_Gyrus_case_exprs_F_expressed_probes_list,
+                               Temporal_Pole_case_exprs_F_expressed_probes_list,
+                               Frontal_Pole_control_exprs_F_expressed_probes_list,
+                               Precentral_Gyrus_control_exprs_F_expressed_probes_list,
+                               Inferior_Frontal_Gyrus_control_exprs_F_expressed_probes_list,
+                               Dorsolateral_Prefrontal_Cortex_control_exprs_F_expressed_probes_list,
+                               Superior_Parietal_Lobule_control_exprs_F_expressed_probes_list,
+                               Prefrontal_Cortex_control_exprs_F_expressed_probes_list,
+                               Parahippocampal_Gyrus_control_exprs_F_expressed_probes_list,
+                               Hippocampus_control_exprs_F_expressed_probes_list,
+                               Inferior_Temporal_Gyrus_control_exprs_F_expressed_probes_list,
+                               Middle_Temporal_Gyrus_control_exprs_F_expressed_probes_list,
+                               Superior_Temporal_Gyrus_control_exprs_F_expressed_probes_list,
+                               Temporal_Pole_control_exprs_F_expressed_probes_list,
+                               Frontal_Pole_case_exprs_M_expressed_probes_list,
+                               Precentral_Gyrus_case_exprs_M_expressed_probes_list,
+                               Inferior_Frontal_Gyrus_case_exprs_M_expressed_probes_list,
+                               Dorsolateral_Prefrontal_Cortex_case_exprs_M_expressed_probes_list,
+                               Superior_Parietal_Lobule_case_exprs_M_expressed_probes_list,
+                               Prefrontal_Cortex_case_exprs_M_expressed_probes_list,
+                               Parahippocampal_Gyrus_case_exprs_M_expressed_probes_list,
+                               Hippocampus_case_exprs_M_expressed_probes_list,
+                               Inferior_Temporal_Gyrus_case_exprs_M_expressed_probes_list,
+                               Middle_Temporal_Gyrus_case_exprs_M_expressed_probes_list,
+                               Superior_Temporal_Gyrus_case_exprs_M_expressed_probes_list,
+                               Temporal_Pole_case_exprs_M_expressed_probes_list,
+                               Frontal_Pole_control_exprs_M_expressed_probes_list,
+                               Precentral_Gyrus_control_exprs_M_expressed_probes_list,
+                               Inferior_Frontal_Gyrus_control_exprs_M_expressed_probes_list,
+                               Dorsolateral_Prefrontal_Cortex_control_exprs_M_expressed_probes_list,
+                               Superior_Parietal_Lobule_control_exprs_M_expressed_probes_list,
+                               Prefrontal_Cortex_control_exprs_M_expressed_probes_list,
+                               Parahippocampal_Gyrus_control_exprs_M_expressed_probes_list,
+                               Hippocampus_control_exprs_M_expressed_probes_list,
+                               Inferior_Temporal_Gyrus_control_exprs_M_expressed_probes_list,
+                               Middle_Temporal_Gyrus_control_exprs_M_expressed_probes_list,
+                               Superior_Temporal_Gyrus_control_exprs_M_expressed_probes_list,
+                               Temporal_Pole_control_exprs_M_expressed_probes_list)))
 
 length(good_probe_list)
 dim(brain_data_normalised_as_data_frame)
@@ -549,7 +735,7 @@ Superior_Temporal_Gyrus_control_exprs_good_probes<-Superior_Temporal_Gyrus_contr
 Temporal_Pole_control_exprs_good_probes<-Temporal_Pole_control_exprs[rownames(Temporal_Pole_control_exprs)%in%good_probe_list,]
 
 
-# check dataframe - all should be 2110
+# check dataframe - all should be 2613
 
 head(Frontal_Pole_case_exprs_good_probes)[1:5]
 dim(Frontal_Pole_case_exprs_good_probes)
@@ -631,6 +817,114 @@ brain_data_normalised_exprs_good_probes<-brain_data_normalised_as_data_frame[row
 dim(brain_data_normalised_exprs_good_probes)
 head(brain_data_normalised_exprs_good_probes)[1:5]
 
+##### GENDER SPECIFIC PROBE PLOTS #####
+
+# get gene symbol list for chip
+Gene_symbols_probes <- mappedkeys(hgu133aSYMBOL)
+
+# Convert to a list
+Gene_symbols <- as.data.frame(hgu133aSYMBOL[Gene_symbols_probes])
+
+head(Gene_symbols)
+dim(Gene_symbols)
+
+#xist gene - 
+XIST_probe_ID<-subset(Gene_symbols, symbol=="XIST")
+XIST_probe_ID
+
+NLGN4Y_probe_ID<-subset(Gene_symbols, symbol=="NLGN4Y")
+NLGN4Y_probe_ID
+
+TMSB4Y_probe_ID<-subset(Gene_symbols, symbol=="TMSB4Y")
+TMSB4Y_probe_ID
+
+USP9Y_probe_ID<-subset(Gene_symbols, symbol=="USP9Y")
+USP9Y_probe_ID
+
+UTY_probe_ID<-subset(Gene_symbols, symbol=="UTY")
+UTY_probe_ID
+
+# merge all genes to check
+
+gene_list<-rbind(XIST_probe_ID,
+                 NLGN4Y_probe_ID,
+                 TMSB4Y_probe_ID,
+                 USP9Y_probe_ID,
+                 UTY_probe_ID)
+
+#create function to plot
+plot_gender_specific_genes<-function(Expression_table, gender_info, genes_to_extract, threshold, boxplot_title){
+  #extract gene of interest
+  Expression_table_gene_check<-as.data.frame(t(Expression_table[genes_to_extract[,1],]))
+  #check all probes extracted
+  print(c("all probes extracted:", dim(Expression_table_gene_check)[2]==dim(genes_to_extract)[1]))
+  # change colnames TO GENE SYMBOL using genes to extract file
+  for (x in 1:dim(Expression_table_gene_check)[2]){
+    colnames(Expression_table_gene_check)[x]<-gene_list[genes_to_extract$probe_id==colnames(Expression_table_gene_check)[x],2]
+  }
+  # add in gender information
+  Expression_table_gene_check_gender<-merge(gender_info, Expression_table_gene_check, by="row.names")
+  rownames(Expression_table_gene_check_gender)<-Expression_table_gene_check_gender$Row.names
+  Expression_table_gene_check_gender$Row.names<-NULL
+  #melt dataframe for plot
+  Expression_table_gene_check_gender_melt<-melt(Expression_table_gene_check_gender, by=Gender)
+  # calculate user defined percentie threshold
+  Expression_table_t<-as.data.frame(t(Expression_table))
+  sample_quantiles<-apply(Expression_table, 2, quantile, probs=threshold)
+  # mean of used defined threshold across samples
+  mean_threshold=mean(sample_quantiles)
+  #plot
+  qplot(variable, value, colour=get(colnames(gender_info)), data = Expression_table_gene_check_gender_melt, geom = c("boxplot", "jitter")) + 
+    geom_hline(yintercept = mean_threshold) +
+    ggtitle(boxplot_title) +
+    labs(x="Gene",y="Expression", colour = colnames(gender_info)) 
+}
+
+# plot
+
+setwd(work_dir)
+
+dir.create(paste(work_dir,"Gender_specific_gene_plots", sep="/"))
+Gender_plots_dir=paste(work_dir,"Gender_specific_gene_plots", sep="/")
+
+setwd(Gender_plots_dir)
+
+pdf("Gender_specific_gene_plot_and_detectable_cut_off_threshold_used.pdf")
+plot_gender_specific_genes(Frontal_Pole_case_exprs, gender_comparison[1], gene_list, 0.9, "Frontal_Pole_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Precentral_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Precentral_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Inferior_Frontal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Inferior_Frontal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Dorsolateral_Prefrontal_Cortex_case_exprs, gender_comparison[1], gene_list, 0.9, "Dorsolateral_Prefrontal_Cortex_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Parietal_Lobule_case_exprs, gender_comparison[1], gene_list, 0.9, "Superior_Parietal_Lobule_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Prefrontal_Cortex_case_exprs, gender_comparison[1], gene_list, 0.9, "Prefrontal_Cortex_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Parahippocampal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Parahippocampal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Hippocampus_case_exprs, gender_comparison[1], gene_list, 0.9, "Hippocampus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Inferior_Temporal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Inferior_Temporal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Middle_Temporal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Middle_Temporal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Temporal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Superior_Temporal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Temporal_Pole_case_exprs, gender_comparison[1], gene_list, 0.9, "Temporal_Pole_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Frontal_Pole_control_exprs, gender_comparison[1], gene_list, 0.9, "Frontal_Pole_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Precentral_Gyrus_control_exprs, gender_comparison[1], gene_list, 0.9, "Precentral_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Inferior_Frontal_Gyrus_control_exprs, gender_comparison[1], gene_list, 0.9, "Inferior_Frontal_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Dorsolateral_Prefrontal_Cortex_control_exprs, gender_comparison[1], gene_list, 0.9, "Dorsolateral_Prefrontal_Cortex_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Parietal_Lobule_control_exprs, gender_comparison[1], gene_list, 0.9, "Superior_Parietal_Lobule_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Prefrontal_Cortex_control_exprs, gender_comparison[1], gene_list, 0.9, "Prefrontal_Cortex_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Parahippocampal_Gyrus_control_exprs, gender_comparison[1], gene_list, 0.9, "Parahippocampal_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Hippocampus_control_exprs, gender_comparison[1], gene_list, 0.9, "Hippocampus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Inferior_Temporal_Gyrus_control_exprs, gender_comparison[1], gene_list, 0.9, "Inferior_Temporal_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Middle_Temporal_Gyrus_control_exprs, gender_comparison[1], gene_list, 0.9, "Middle_Temporal_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Temporal_Gyrus_control_exprs, gender_comparison[1], gene_list, 0.9, "Superior_Temporal_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Temporal_Pole_control_exprs, gender_comparison[1], gene_list, 0.9, "Temporal_Pole_control_exprs_gender_specific_genes")
+dev.off()
+
+# plot gender missmatches
+
+pdf("Gender_missmatch.pdf")
+plot_gender_specific_genes(Parahippocampal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Parahippocampal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Parahippocampal_Gyrus_case_exprs, gender_comparison[2], gene_list, 0.9, "Parahippocampal_Gyrus_case_exprs_gender_specific_genes")
+dev.off()
+
+setwd(work_dir)
+
 ##### PCA ####
 
 # calculate pca
@@ -681,7 +975,6 @@ rownames(Diagnosis_lookup_temp)<-Diagnosis_lookup_temp$individual_ID
 
 Diagnosis_lookup_temp$individual_ID<-NULL
 head(Diagnosis_lookup_temp)
-
 
 # order of samples in expression data
 Diagnosis_temp<-colnames(brain_data_normalised_exprs_good_probes)
@@ -846,16 +1139,66 @@ dim(Superior_Temporal_Gyrus_exprs_good_probes)
 head(Temporal_Pole_exprs_good_probes)[1:5]
 dim(Temporal_Pole_exprs_good_probes)
 
+# add gender in 
+
+Frontal_Pole_exprs_good_probes<-merge(gender_comparison[1], Frontal_Pole_exprs_good_probes, by="row.names")
+rownames(Frontal_Pole_exprs_good_probes)<-Frontal_Pole_exprs_good_probes$Row.names
+Frontal_Pole_exprs_good_probes$Row.names<-NULL
+
+Precentral_Gyrus_exprs_good_probes<-merge(gender_comparison[1], Precentral_Gyrus_exprs_good_probes, by="row.names")
+rownames(Precentral_Gyrus_exprs_good_probes)<-Precentral_Gyrus_exprs_good_probes$Row.names
+Precentral_Gyrus_exprs_good_probes$Row.names<-NULL
+
+Inferior_Frontal_Gyrus_exprs_good_probes<-merge(gender_comparison[1], Inferior_Frontal_Gyrus_exprs_good_probes, by="row.names")
+rownames(Inferior_Frontal_Gyrus_exprs_good_probes)<-Inferior_Frontal_Gyrus_exprs_good_probes$Row.names
+Inferior_Frontal_Gyrus_exprs_good_probes$Row.names<-NULL
+
+Dorsolateral_Prefrontal_Cortex_exprs_good_probes<-merge(gender_comparison[1], Dorsolateral_Prefrontal_Cortex_exprs_good_probes, by="row.names")
+rownames(Dorsolateral_Prefrontal_Cortex_exprs_good_probes)<-Dorsolateral_Prefrontal_Cortex_exprs_good_probes$Row.names
+Dorsolateral_Prefrontal_Cortex_exprs_good_probes$Row.names<-NULL
+
+Superior_Parietal_Lobule_exprs_good_probes<-merge(gender_comparison[1], Superior_Parietal_Lobule_exprs_good_probes, by="row.names")
+rownames(Superior_Parietal_Lobule_exprs_good_probes)<-Superior_Parietal_Lobule_exprs_good_probes$Row.names
+Superior_Parietal_Lobule_exprs_good_probes$Row.names<-NULL
+
+Prefrontal_Cortex_exprs_good_probes<-merge(gender_comparison[1], Prefrontal_Cortex_exprs_good_probes, by="row.names")
+rownames(Prefrontal_Cortex_exprs_good_probes)<-Prefrontal_Cortex_exprs_good_probes$Row.names
+Prefrontal_Cortex_exprs_good_probes$Row.names<-NULL
+
+Parahippocampal_Gyrus_exprs_good_probes<-merge(gender_comparison[1], Parahippocampal_Gyrus_exprs_good_probes, by="row.names")
+rownames(Parahippocampal_Gyrus_exprs_good_probes)<-Parahippocampal_Gyrus_exprs_good_probes$Row.names
+Parahippocampal_Gyrus_exprs_good_probes$Row.names<-NULL
+
+Hippocampus_exprs_good_probes<-merge(gender_comparison[1], Hippocampus_exprs_good_probes, by="row.names")
+rownames(Hippocampus_exprs_good_probes)<-Hippocampus_exprs_good_probes$Row.names
+Hippocampus_exprs_good_probes$Row.names<-NULL
+
+Inferior_Temporal_Gyrus_exprs_good_probes<-merge(gender_comparison[1], Inferior_Temporal_Gyrus_exprs_good_probes, by="row.names")
+rownames(Inferior_Temporal_Gyrus_exprs_good_probes)<-Inferior_Temporal_Gyrus_exprs_good_probes$Row.names
+Inferior_Temporal_Gyrus_exprs_good_probes$Row.names<-NULL
+
+Middle_Temporal_Gyrus_exprs_good_probes<-merge(gender_comparison[1], Middle_Temporal_Gyrus_exprs_good_probes, by="row.names")
+rownames(Middle_Temporal_Gyrus_exprs_good_probes)<-Middle_Temporal_Gyrus_exprs_good_probes$Row.names
+Middle_Temporal_Gyrus_exprs_good_probes$Row.names<-NULL
+
+Superior_Temporal_Gyrus_exprs_good_probes<-merge(gender_comparison[1], Superior_Temporal_Gyrus_exprs_good_probes, by="row.names")
+rownames(Superior_Temporal_Gyrus_exprs_good_probes)<-Superior_Temporal_Gyrus_exprs_good_probes$Row.names
+Superior_Temporal_Gyrus_exprs_good_probes$Row.names<-NULL
+
+Temporal_Pole_exprs_good_probes<-merge(gender_comparison[1], Temporal_Pole_exprs_good_probes, by="row.names")
+rownames(Temporal_Pole_exprs_good_probes)<-Temporal_Pole_exprs_good_probes$Row.names
+Temporal_Pole_exprs_good_probes$Row.names<-NULL
+
 # create sva function
 
 check_SV_in_data<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_pheno<-sorted_by_diagnosis[1]
-  dataset_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
+  dataset_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_pheno)
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_pheno)
   # check number of SV in data
   num.sv(dataset_exprs, mod, method="leek")
 }
@@ -881,10 +1224,10 @@ adjust_for_sva<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_sva_pheno<-sorted_by_diagnosis[1]
-  dataset_sva_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
+  dataset_sva_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_sva_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_sva_pheno)
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_sva_pheno)
   mod0 = model.matrix(~1, data=dataset_sva_pheno)
   # number of SV
   num.sv(dataset_sva_exprs, mod, method="leek")
@@ -912,21 +1255,24 @@ adjust_for_sva<-function(dataset){
   return(clean_data_with_pheno)
 }
 
-Frontal_Pole_exprs_good_probes_sva_adjusted<-adjust_for_sva(Frontal_Pole_exprs_good_probes)
-Dorsolateral_Prefrontal_Cortex_exprs_good_probes_sva_adjusted<-adjust_for_sva(Dorsolateral_Prefrontal_Cortex_exprs_good_probes)
-Parahippocampal_Gyrus_exprs_good_probes_sva_adjusted<-adjust_for_sva(Parahippocampal_Gyrus_exprs_good_probes)
-Inferior_Temporal_Gyrus_exprs_good_probes_sva_adjusted<-adjust_for_sva(Inferior_Temporal_Gyrus_exprs_good_probes)
-Temporal_Pole_exprs_good_probes_sva_adjusted<-adjust_for_sva(Temporal_Pole_exprs_good_probes)
+# apply function
 
-# changed name fro non sva adjusted data
+Frontal_Pole_exprs_good_probes_sva_adjusted<-adjust_for_sva(Frontal_Pole_exprs_good_probes)
+Inferior_Frontal_Gyrus_exprs_good_probes_sva_adjusted<-adjust_for_sva(Inferior_Frontal_Gyrus_exprs_good_probes)
+Dorsolateral_Prefrontal_Cortex_exprs_good_probes_sva_adjusted<-adjust_for_sva(Dorsolateral_Prefrontal_Cortex_exprs_good_probes)
+Prefrontal_Cortex_exprs_good_probes_sva_adjusted<-adjust_for_sva(Prefrontal_Cortex_exprs_good_probes)
+Inferior_Temporal_Gyrus_exprs_good_probes_sva_adjusted<-adjust_for_sva(Inferior_Temporal_Gyrus_exprs_good_probes)
+
+
+# changed name from non sva adjusted data
 
 Precentral_Gyrus_exprs_good_probes_sva_adjusted<-Precentral_Gyrus_exprs_good_probes
-Inferior_Frontal_Gyrus_exprs_good_probes_sva_adjusted<-Inferior_Frontal_Gyrus_exprs_good_probes
 Superior_Parietal_Lobule_exprs_good_probes_sva_adjusted<-Superior_Parietal_Lobule_exprs_good_probes
-Prefrontal_Cortex_exprs_good_probes_sva_adjusted<-Prefrontal_Cortex_exprs_good_probes
 Hippocampus_exprs_good_probes_sva_adjusted<-Hippocampus_exprs_good_probes
 Middle_Temporal_Gyrus_exprs_good_probes_sva_adjusted<-Middle_Temporal_Gyrus_exprs_good_probes
 Superior_Temporal_Gyrus_exprs_good_probes_sva_adjusted<-Superior_Temporal_Gyrus_exprs_good_probes
+Parahippocampal_Gyrus_exprs_good_probes_sva_adjusted<-Parahippocampal_Gyrus_exprs_good_probes
+Temporal_Pole_exprs_good_probes_sva_adjusted<-Temporal_Pole_exprs_good_probes
 
 # re check SV
 
@@ -945,7 +1291,6 @@ check_SV_in_data(Temporal_Pole_exprs_good_probes_sva_adjusted)
 
 ##### SAMPLE NETWORK PLOT #####
 
-
 # separate case and control for sample netwrok analysis
 
 Frontal_Pole_exprs_good_probes_sva_adjusted_case<-Frontal_Pole_exprs_good_probes_sva_adjusted[Frontal_Pole_exprs_good_probes_sva_adjusted$Diagnosis=="AD",]
@@ -960,7 +1305,6 @@ Inferior_Temporal_Gyrus_exprs_good_probes_sva_adjusted_case<-Inferior_Temporal_G
 Middle_Temporal_Gyrus_exprs_good_probes_sva_adjusted_case<-Middle_Temporal_Gyrus_exprs_good_probes_sva_adjusted[Middle_Temporal_Gyrus_exprs_good_probes_sva_adjusted$Diagnosis=="AD",]
 Superior_Temporal_Gyrus_exprs_good_probes_sva_adjusted_case<-Superior_Temporal_Gyrus_exprs_good_probes_sva_adjusted[Superior_Temporal_Gyrus_exprs_good_probes_sva_adjusted$Diagnosis=="AD",]
 Temporal_Pole_exprs_good_probes_sva_adjusted_case<-Temporal_Pole_exprs_good_probes_sva_adjusted[Temporal_Pole_exprs_good_probes_sva_adjusted$Diagnosis=="AD",]
-
 
 Frontal_Pole_exprs_good_probes_sva_adjusted_control<-Frontal_Pole_exprs_good_probes_sva_adjusted[Frontal_Pole_exprs_good_probes_sva_adjusted$Diagnosis=="CONTROL",]
 Precentral_Gyrus_exprs_good_probes_sva_adjusted_control<-Precentral_Gyrus_exprs_good_probes_sva_adjusted[Precentral_Gyrus_exprs_good_probes_sva_adjusted$Diagnosis=="CONTROL",]
@@ -1001,32 +1345,11 @@ table(Middle_Temporal_Gyrus_exprs_good_probes_sva_adjusted_control$Diagnosis)
 table(Superior_Temporal_Gyrus_exprs_good_probes_sva_adjusted_control$Diagnosis)
 table(Temporal_Pole_exprs_good_probes_sva_adjusted_control$Diagnosis)
 
-# extract phenotype data - merge all AD ID as AD
-
-# case_ID_sample_network<-as.data.frame(case_ID)
-# colnames(case_ID_sample_network)[1]<-"ID"
-# case_ID_sample_network$Diagnosis<-"AD"
-# 
-# control_ID_sample_network<-as.data.frame(control_ID)
-# colnames(control_ID_sample_network)[1]<-"ID"
-# control_ID_sample_network$Diagnosis<-"Control"
-# 
-# Diagnosis<-rbind(case_ID_sample_network, control_ID_sample_network)
-# dim(Diagnosis)
-# Diagnosis<-unique(Diagnosis)
-# rownames(Diagnosis)<-Diagnosis$ID
-# Diagnosis[1]<-NULL
-# head(Diagnosis)
-# 
-# Diagnosis$ID<-rownames(Diagnosis)
-
-# order Diagnosis by order of expression table - from pca plot
-
 # sample plot function - taken from steve expression pipeline
 
 sampleNetwork_plot <- function(dataset) {
-  datExprs<-t(dataset[2:dim(dataset)[2]])
-  diagnosis<-dataset[1]
+  datExprs<-t(dataset[3:dim(dataset)[2]])
+  diagnosis<-dataset[2]
   gp_col <- "group"
   cat(" setting up data for qc plots","\r","\n")
   ## expression matrix and IAC
@@ -1097,7 +1420,7 @@ sampleNetwork_plot <- function(dataset) {
 # create functio to ID outliers
 
 names_of_outliers<-function(dataset, threshold){
-  datExprs<-t(dataset[2:dim(dataset)[2]])
+  datExprs<-t(dataset[3:dim(dataset)[2]])
   IAC = cor(datExprs, method = "p", use = "p")
   diag(IAC) = 0
   A.IAC = ((1 + IAC)/2)^2  ## ADJACENCY MATRIX
@@ -1149,7 +1472,7 @@ Precentral_Gyrus_exprs_good_probes_sva_adjusted_case_QC<-run_sample_network_plot
 Inferior_Frontal_Gyrus_exprs_good_probes_sva_adjusted_case_QC<-run_sample_network_plot(Inferior_Frontal_Gyrus_exprs_good_probes_sva_adjusted_case, -3)
 Dorsolateral_Prefrontal_Cortex_exprs_good_probes_sva_adjusted_case_QC<-run_sample_network_plot(Dorsolateral_Prefrontal_Cortex_exprs_good_probes_sva_adjusted_case, -3)
 Superior_Parietal_Lobule_exprs_good_probes_sva_adjusted_case_QC<-run_sample_network_plot(Superior_Parietal_Lobule_exprs_good_probes_sva_adjusted_case, -3)
-Prefrontal_Cortex_exprs_good_probes_sva_adjusted_case_QC<-run_sample_network_plot(Prefrontal_Cortex_exprs_good_probes_sva_adjusted_case, -2)
+Prefrontal_Cortex_exprs_good_probes_sva_adjusted_case_QC<-run_sample_network_plot(Prefrontal_Cortex_exprs_good_probes_sva_adjusted_case, -3)
 Parahippocampal_Gyrus_exprs_good_probes_sva_adjusted_case_QC<-run_sample_network_plot(Parahippocampal_Gyrus_exprs_good_probes_sva_adjusted_case, -3)
 Hippocampus_exprs_good_probes_sva_adjusted_case_QC<-run_sample_network_plot(Hippocampus_exprs_good_probes_sva_adjusted_case, -2)
 Inferior_Temporal_Gyrus_exprs_good_probes_sva_adjusted_case_QC<-run_sample_network_plot(Inferior_Temporal_Gyrus_exprs_good_probes_sva_adjusted_case, -3)
@@ -1197,7 +1520,7 @@ run_sample_network_plot(Superior_Parietal_Lobule_exprs_good_probes_sva_adjusted_
 dev.off()
 
 pdf("Prefrontal_Cortex_sample_network_analysis_cases.pdf")
-run_sample_network_plot(Prefrontal_Cortex_exprs_good_probes_sva_adjusted_case, -2)
+run_sample_network_plot(Prefrontal_Cortex_exprs_good_probes_sva_adjusted_case, -3)
 dev.off()
 
 pdf("Parahippocampal_Gyrus_sample_network_analysis_cases.pdf")
@@ -1273,8 +1596,6 @@ pdf("Temporal_Pole_sample_network_analysis_controls.pdf")
 run_sample_network_plot(Temporal_Pole_exprs_good_probes_sva_adjusted_control, -3)
 dev.off()
 
-
-
 setwd(work_dir)
 
 ##### CREATE QC'd DATASET #####
@@ -1337,11 +1658,13 @@ brain_data_QCd<-rbind(Frontal_Pole_exprs_good_probes_sva_adjusted_case_QC,
 dim(brain_data_normalised_exprs_good_probes)
 dim(brain_data_QCd)
 
+head(brain_data_QCd)[1:5]
+
 ##### PCA ON CLEAN DATA ####
 
 # calculate pca
 
-pca_QCd<-prcomp(t(brain_data_QCd[2:dim(brain_data_QCd)[2]]))
+pca_QCd<-prcomp(t(brain_data_QCd[3:dim(brain_data_QCd)[2]]))
 
 # plot variance
 plot(pca_QCd, type="l")
@@ -1401,7 +1724,7 @@ brain_region_pca_color_QCd<-labels2colors(as.character(brain_region_pca_QCd))
 
 # pca plot - color by disease - case/control
 plot(pca_QCd$rotation[,1:2], main=" PCA plot coloured by Brain Region after QC",col="black", pch=21,bg=brain_region_pca_color_QCd)
-legend('bottomleft', as.character(unique(brain_region_pca_QCd)), fill=unique(brain_region_pca_color_QCd), cex=0.5)
+legend('bottomleft', as.character(unique(brain_region_pca_QCd)), fill=unique(brain_region_pca_color_QCd), cex=0.7)
 
 #plot to pdf - before/after QC
 
@@ -1417,7 +1740,7 @@ legend('bottomleft', unique(Diagnosis_pca_QCd$Diagnosis), fill=unique(Diagnosis_
 plot(pca$rotation[,1:2], main=" PCA plot coloured by Brain Region",col="black", pch=21,bg=brain_region_pca_color)
 legend('bottomright', as.character(unique(brain_region_pca)), fill=unique(brain_region_pca_color), cex = 0.5)
 plot(pca_QCd$rotation[,1:2], main=" PCA plot coloured by Brain Region after QC",col="black", pch=21,bg=brain_region_pca_color_QCd)
-legend('bottomleft', as.character(unique(brain_region_pca_QCd)), fill=unique(brain_region_pca_color_QCd), cex=0.5)
+legend('bottomleft', as.character(unique(brain_region_pca_QCd)), fill=unique(brain_region_pca_color_QCd), cex=0.7)
 dev.off()
 
 setwd(work_dir)
@@ -1457,14 +1780,14 @@ convert_probe_id_to_entrez_id <- function(expression_dataset, probe_mapping_file
 
 # using hgu133a
 
-brain_data_QCd_entrez_id<-convert_probe_id_to_entrez_id(brain_data_QCd[2:dim(brain_data_QCd)[2]], hgu133a.db_mapping)
+brain_data_QCd_entrez_id<-convert_probe_id_to_entrez_id(brain_data_QCd[3:dim(brain_data_QCd)[2]], hgu133a.db_mapping)
 dim(brain_data_QCd)
 dim(brain_data_QCd_entrez_id)
 length(which(duplicated(colnames(brain_data_QCd_entrez_id))))
 
 head(brain_data_QCd_entrez_id[100:110])
 
-##### COLLAPSE MULTIPPLE ENTREZ ID BY SELECTING ONE WITH HIGHEST AVERAGE EXPRESSION ACROSS SAMPLES ######
+##### COLLAPSE MULTIPLE ENTREZ ID BY SELECTING ONE WITH HIGHEST AVERAGE EXPRESSION ACROSS SAMPLES ######
 
 ## create function
 
@@ -1500,13 +1823,13 @@ head(brain_data_QCd_entrez_id_unique[1:5])
 
 ##### ATTACH DIAGNOSIS AND BRAIN REGION #####
 
-# "Tissue", "MMSE", "Gender", "Diagnosis_sub_cat", "Diagnosis", "BRAAK", "APOE", "Age"
+# "Tissue", "MMSE", "Clinical_Gender", "Predicted_Gender", Diagnosis_sub_cat", "Diagnosis", "BRAAK", "APOE", "Age"
 
 head(phenotype_data_brain_region)
 
 # read in APOE info
 
-APOE_info<-read.table("/media/hamel/1TB/Projects/Brain_expression/1.Data/1.old/AD/AMP_MSBB/Phenotype_info/AMP-AD_MSBB_MSSM_array_ApoE_genotype.txt", header = T)
+APOE_info<-read.table("/media/hamel/1TB/Projects/Brain_expression/old/1.old/AD/AMP_MSBB/Phenotype_info/AMP-AD_MSBB_MSSM_array_ApoE_genotype.txt", header = T)
 APOE_info$APOE<-paste(APOE_info$ApoE1, APOE_info$ApoE2, sep=",")
 APOE_info$ApoE1<-NULL
 APOE_info$ApoE2<-NULL
@@ -1518,6 +1841,17 @@ phenotype<-merge(phenotype_data_brain_region, APOE_info, by="BB_ID")
 
 head(phenotype)
 dim(phenotype)
+
+# merge clinial/predicted gender
+
+head(gender_comparison)
+gender_import<-gender_comparison
+gender_import$individual_ID<-rownames(gender_import)
+head(gender_import)
+
+phenotype<-merge(phenotype, gender_import, by="individual_ID")
+
+head(phenotype)
 
 #subset phenotype to samples in brain data
 
@@ -1537,17 +1871,30 @@ rownames(phenotype)<-phenotype$individual_ID
 head(phenotype)
 colnames(phenotype)
 
-phenotype_to_attach<-phenotype[c(5, 8, 18, 12, 19, 10)]
+phenotype_to_attach<-phenotype[c(6, 20, 21, 18, 13, 19, 11)]
 head(phenotype_to_attach)
 
 phenotype_to_attach$MMSE<-"Unknown"
 phenotype_to_attach$Diagnosis_sub_cat<-"Unknown"
 
-phenotype_to_attach<-phenotype_to_attach[c(1, 7, 2, 8, 3, 4, 5, 6)]
 head(phenotype_to_attach)
 
-colnames(phenotype_to_attach)<-c("Tissue", "MMSE", "Gender", "Diagnosis_sub_cat", "Diagnosis", "BRAAK", "APOE", "Age")
+colnames(phenotype_to_attach)<-c("Tissue", "Clinical_Gender", "Predicted_Gender", "Diagnosis", "BRAAK", "APOE", "Age", "MMSE", "Diagnosis_sub_cat")
 head(phenotype_to_attach)
+
+# create sub cats based on BRAAK/MMSE scores - use BRAAK- Control = 0-1, Incipient= 2-3, Moderate=4, Severe= 5-6
+table(phenotype_to_attach$BRAAK, exclude=NULL)
+
+phenotype_to_attach[phenotype_to_attach$BRAAK=="0" | phenotype_to_attach$BRAAK=="1", 9]<-"Control"
+phenotype_to_attach[phenotype_to_attach$BRAAK=="2" | phenotype_to_attach$BRAAK=="3", 9]<-"Incipient_AD"
+phenotype_to_attach[phenotype_to_attach$BRAAK=="4", 9]<-"Moderate_AD"
+phenotype_to_attach[phenotype_to_attach$BRAAK=="5" | phenotype_to_attach$BRAAK=="6", 9]<-"Severe_AD"
+
+table(phenotype_to_attach$Diagnosis_sub_cat, exclude=NULL)
+
+# order pheno information
+
+phenotype_to_attach<-phenotype_to_attach[,order(names(phenotype_to_attach), decreasing = T)]
 
 # merge pheno info with expr
 
@@ -1567,7 +1914,7 @@ dim(phenotype_to_attach)
 
 dim(brain_data_QCd_entrez_id_unique_pheno)
 
-# lost 6 samples as no pheno available
+# lost 7 samples as no pheno available
 
 ##### SAVE EXPRESSION DATAFRAME #####
 
@@ -1580,6 +1927,23 @@ write.table(brain_data_QCd_entrez_id_unique_pheno, file="AMP_MSBB_U133A_pre-proc
 setwd(clean_data_dir)
 
 write.table(phenotype, file="AMP_MSBB_U133A_phenotype_data2.txt", sep="\t")
+
+##### WRITE LIST OF CONTROL GENES EXPRESSED #####
+
+setwd("/media/hamel/1TB/Projects/Brain_expression/2.Expression_across_brain_regions_in_control_datasets/1.Data")
+
+write(Frontal_Pole_control_expressed_probes_list, file="AMP_MSBB_U133A_Frontal_Pole.txt") 
+write(Precentral_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Precentral_Gyrus.txt") 
+write(Inferior_Frontal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Inferior_Frontal_Gyrus.txt") 
+write(Dorsolateral_Prefrontal_Cortex_control_expressed_probes_list, file="AMP_MSBB_U133A_Dorsolateral_Prefrontal_Cortex.txt") 
+write(Superior_Parietal_Lobule_control_expressed_probes_list, file="AMP_MSBB_U133A_Superior_Parietal_Lobule.txt") 
+write(Prefrontal_Cortex_control_expressed_probes_list, file="AMP_MSBB_U133A_Prefrontal_Cortex.txt") 
+write(Parahippocampal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Parahippocampal_Gyrus.txt") 
+write(Hippocampus_control_expressed_probes_list, file="AMP_MSBB_U133A_Hippocampus.txt") 
+write(Inferior_Temporal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Inferior_Temporal_Gyrus.txt") 
+write(Middle_Temporal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Middle_Temporal_Gyrus.txt") 
+write(Superior_Temporal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Superior_Temporal_Gyrus.txt") 
+write(Temporal_Pole_control_expressed_probes_list, file="AMP_MSBB_U133A_Temporal_Pole.txt") 
 
 ##### SAVE IMAGE #####
 
