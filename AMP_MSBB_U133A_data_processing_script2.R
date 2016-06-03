@@ -1859,7 +1859,7 @@ dim(brain_data_QCd_entrez_id_unique)
 dim(phenotype)
 
 phenotype<-subset(phenotype, phenotype$individual_ID %in% rownames(brain_data_QCd_entrez_id_unique))
-phenotype<-subset(phenotype, phenotype$ARRAY=="AffymetrixHG-U133B")
+phenotype<-subset(phenotype, phenotype$ARRAY=="AffymetrixHG-U133A")
 
 dim(brain_data_QCd_entrez_id_unique)
 dim(phenotype)
