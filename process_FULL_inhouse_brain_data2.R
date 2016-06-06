@@ -3,7 +3,7 @@
 ####                                                                                                                                  ####
 ###                                                                                                                                    ###
 ##                                                                                                                                      ##
-#                                                   RE-PROCESS FULL IN-HOUSE DATA - PIEPLINE V02                                                        #
+#                                                   RE-PROCESS FULL IN-HOUSE DATA - PIEPLINE V02                                         #
 ##                                                                                                                                      ##
 ###                                                                                                                                    ###
 ####                                                                                                                                  ####
@@ -25,13 +25,16 @@ library(affy)
 library(WGCNA)
 library(illuminaHumanv4.db) 
 library(sva)
+library(reshape)
+library(massiR)
+library(ggplot2 )
 
 ##### SET DIRECTORY #####
 
-work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/AD/inhouse_brain/Full_dataset_reprocess_2"
+work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/1.Re-process_with_new_pipeline/AD/inhouse_data"
 data_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/AD/inhouse_brain/Full_dataset/InHouse_Brain_Expression_Data/"
 
-setwd(data_dir)
+setwd(work_dir)
 
 dir.create(paste(work_dir,"pca_plots", sep="/"))
 
@@ -104,7 +107,108 @@ Frontal_Cortex
 Temporal_Cortex
 Cerebellum
 
+##### GENDER CHECK ##### 
+
+# Tried to convert probe ID from massiR to entrez and then back to affy U133a chip - less probes hit.
+# Using directly affy_hg_u133_plus_2 probe list
+#
+#
+
+head(phenotype_data)
+names(phenotype_data)
+
+# gender_information
+gender_info<-phenotype_data[64]
+head(gender_info)
+
+#subset male/female
+female_samples<-subset(gender_info, clinical_gender=="FEMALE")
+
+male_samples<-subset(gender_info, clinical_gender=="MALE")
+
+head(female_samples)
+head(male_samples)
+
+head(brain_data_normalised_as_data_frame)[1:5]
+dim(brain_data_normalised_as_data_frame)
+
+#convert nuid back to illumina id
+
+head(anno_probes)
+dim(anno_probes)
+
+nuID_ilmID<-anno_probes[c(1,2)]
+
+head(nuID_ilmID)
+nuID_ilmID<-unique(nuID_ilmID)
+rownames(nuID_ilmID)<- nuID_ilmID$nuID
+nuID_ilmID$nuID<-NULL
+
+brain_data_normalised_as_data_frame_illID<-merge(nuID_ilmID, t(brain_data_normalised_as_data_frame), by="row.names")
+
+dim(brain_data_normalised_as_data_frame)
+dim(brain_data_normalised_as_data_frame_illID)
+
+head(brain_data_normalised_as_data_frame_illID)[1:5]
+
+rownames(brain_data_normalised_as_data_frame_illID)<-brain_data_normalised_as_data_frame_illID$PROBE_ID
+brain_data_normalised_as_data_frame_illID$Row.names<-NULL
+brain_data_normalised_as_data_frame_illID$PROBE_ID<-NULL
+
+head(brain_data_normalised_as_data_frame_illID)[1:5]
+
+# get Y choromosome genes
+data(y.probes)
+names(y.probes)
+
+y_chromo_probes <- data.frame(y.probes["illumina_humanht_12"])
+
+# extract Y chromosome genes from dataset
+eset.select.out <- massi_select(brain_data_normalised_as_data_frame_illID, y_chromo_probes)
+
+massi_y_plot(eset.select.out)
+massi_cluster_plot(eset.select.out)
+
+# run gender predict
+eset.results <- massi_cluster(eset.select.out)
+
+#extract gender prediction
+predicted_gender<-(eset.results$massi.results)[c(1,5)]
+rownames(predicted_gender)<-predicted_gender$ID
+predicted_gender$ID<-NULL
+colnames(predicted_gender)<-"Predicted_Gender"
+head(predicted_gender)
+
+#compare to clinical Gender
+#standardise
+
+gender_info$clinical_gender<-as.character(gender_info$clinical_gender)
+gender_info[gender_info$clinical_gender=="MALE",]<-"male"
+gender_info[gender_info$clinical_gender=="FEMALE",]<-"female"
+
+#merge
+gender_comparison<-merge(gender_info, predicted_gender, by="row.names")
+rownames(gender_comparison)<-gender_comparison$Row.names
+gender_comparison$Row.names<-NULL
+colnames(gender_comparison)<-c("Clinical_Gender", "Predicted_Gender")
+head(gender_comparison)
+
+#differences
+
+Gender_missmatch<-gender_comparison[which(gender_comparison$Clinical_Gender!=gender_comparison$Predicted_Gender),]
+Gender_missmatch
+
+# look at missmatch 
+
+Diagnosis[rownames(Gender_missmatch),]
+
+gender_check_results<-eset.results$massi.results
+
+gender_check_results[gender_check_results$ID %in% rownames(Gender_missmatch),]
+
 ##### PROBE ID DETECTION #####
+
+# using dataframe before probe removal
 
 # separate case control 
 
@@ -112,13 +216,13 @@ case_ID<-rownames(Diagnosis_case)
 
 control_ID<-rownames(Diagnosis_control)
 
-brain_data_normalised_as_data_frame<-brain_data
+#brain_data_normalised_as_data_frame_illID<-brain_data
 
-head(brain_data_normalised_as_data_frame)[1:5]
-dim(brain_data_normalised_as_data_frame)
+head(brain_data_normalised_as_data_frame_illID)[1:5]
+dim(brain_data_normalised_as_data_frame_illID)
 
-case_exprs<-brain_data_normalised_as_data_frame[rownames(brain_data_normalised_as_data_frame)%in%case_ID,]
-control_exprs<-brain_data_normalised_as_data_frame[rownames(brain_data_normalised_as_data_frame)%in%control_ID,]
+case_exprs<-as.data.frame(t(brain_data_normalised_as_data_frame_illID[,colnames(brain_data_normalised_as_data_frame_illID)%in%case_ID]))
+control_exprs<-as.data.frame(t(brain_data_normalised_as_data_frame_illID[,colnames(brain_data_normalised_as_data_frame_illID)%in%control_ID]))
 
 head(case_exprs[1:5])
 dim(case_exprs)
@@ -166,6 +270,28 @@ head(Frontal_Cortex_control_exprs)[1:5]
 head(Temporal_Cortex_control_exprs)[1:5]
 head(Cerebellum_control_exprs)[1:5]
 
+# separate by gender
+
+Entorhnal_Cortex_case_exprs_F<-Entorhnal_Cortex_case_exprs[rownames(Entorhnal_Cortex_case_exprs)%in%rownames(female_samples),]
+Frontal_Cortex_case_exprs_F<-Frontal_Cortex_case_exprs[rownames(Frontal_Cortex_case_exprs)%in%rownames(female_samples),]
+Temporal_Cortex_case_exprs_F<-Temporal_Cortex_case_exprs[rownames(Temporal_Cortex_case_exprs)%in%rownames(female_samples),]
+Cerebellum_case_exprs_F<-Cerebellum_case_exprs[rownames(Cerebellum_case_exprs)%in%rownames(female_samples),]
+
+Entorhnal_Cortex_control_exprs_F<-Entorhnal_Cortex_control_exprs[rownames(Entorhnal_Cortex_control_exprs)%in%rownames(female_samples),]
+Frontal_Cortex_control_exprs_F<-Frontal_Cortex_control_exprs[rownames(Frontal_Cortex_control_exprs)%in%rownames(female_samples),]
+Temporal_Cortex_control_exprs_F<-Temporal_Cortex_control_exprs[rownames(Temporal_Cortex_control_exprs)%in%rownames(female_samples),]
+Cerebellum_control_exprs_F<-Cerebellum_control_exprs[rownames(Cerebellum_control_exprs)%in%rownames(female_samples),]
+
+Entorhnal_Cortex_case_exprs_M<-Entorhnal_Cortex_case_exprs[rownames(Entorhnal_Cortex_case_exprs)%in%rownames(male_samples),]
+Frontal_Cortex_case_exprs_M<-Frontal_Cortex_case_exprs[rownames(Frontal_Cortex_case_exprs)%in%rownames(male_samples),]
+Temporal_Cortex_case_exprs_M<-Temporal_Cortex_case_exprs[rownames(Temporal_Cortex_case_exprs)%in%rownames(male_samples),]
+Cerebellum_case_exprs_M<-Cerebellum_case_exprs[rownames(Cerebellum_case_exprs)%in%rownames(male_samples),]
+
+Entorhnal_Cortex_control_exprs_M<-Entorhnal_Cortex_control_exprs[rownames(Entorhnal_Cortex_control_exprs)%in%rownames(male_samples),]
+Frontal_Cortex_control_exprs_M<-Frontal_Cortex_control_exprs[rownames(Frontal_Cortex_control_exprs)%in%rownames(male_samples),]
+Temporal_Cortex_control_exprs_M<-Temporal_Cortex_control_exprs[rownames(Temporal_Cortex_control_exprs)%in%rownames(male_samples),]
+Cerebellum_control_exprs_M<-Cerebellum_control_exprs[rownames(Cerebellum_control_exprs)%in%rownames(male_samples),]
+
 # calculate 90th percentile for each sample in each group
 
 extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_threshold) {
@@ -177,6 +303,9 @@ extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_th
   sample_quantiles<-apply(dataset, 2, quantile, probs=c(probe_percentile_threshold))
   # count length of quantile - will be number of samples
   number_of_samples<-length(sample_quantiles)
+  #boxplot of quanties and print indivdual
+  boxplot(as.data.frame(sample_quantiles))
+  print(as.data.frame(sample_quantiles))
   # convert probes values to NA in for each sample if probe expression value below sample percentile cut-off
   for (x in 1:number_of_samples) {
     is.na(dataset[x]) <- dataset[x] >= sample_quantiles[x]
@@ -192,75 +321,81 @@ extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_th
   return(good_probes)
 }
 
-# apply function - case
+#apply function
 
-Entorhnal_Cortex_case_expressed_probes_list<-extract_good_probe_list(Entorhnal_Cortex_case_exprs, 0.9, 0.8)
-head(Entorhnal_Cortex_case_expressed_probes_list)
-length(Entorhnal_Cortex_case_expressed_probes_list)
-ncol(Entorhnal_Cortex_case_exprs)
+Entorhnal_Cortex_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Entorhnal_Cortex_case_exprs_F, 0.9, 0.8)
+length(Entorhnal_Cortex_case_exprs_F_expressed_probes_list)
 
-# list of bad probes
-all_probe_list<-colnames(Entorhnal_Cortex_case_exprs)
-bad_EC_probes<-Entorhnal_Cortex_case_exprs[,!(colnames(Entorhnal_Cortex_case_exprs)%in%Entorhnal_Cortex_case_expressed_probes_list)]
-dim(bad_EC_probes)
-head(bad_EC_probes)[1:5]
-boxplot(t(bad_EC_probes))
+Frontal_Cortex_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Frontal_Cortex_case_exprs_F, 0.9, 0.8)
+length(Frontal_Cortex_case_exprs_F_expressed_probes_list)
 
-Frontal_Cortex_case_expressed_probes_list<-extract_good_probe_list(Frontal_Cortex_case_exprs, 0.9, 0.8)
-head(Frontal_Cortex_case_expressed_probes_list)
-length(Frontal_Cortex_case_expressed_probes_list)
-ncol(Frontal_Cortex_case_exprs)
+Temporal_Cortex_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Temporal_Cortex_case_exprs_F, 0.9, 0.8)
+length(Temporal_Cortex_case_exprs_F_expressed_probes_list)
 
-Temporal_Cortex_case_expressed_probes_list<-extract_good_probe_list(Temporal_Cortex_case_exprs, 0.9, 0.8)
-head(Temporal_Cortex_case_expressed_probes_list)
-length(Temporal_Cortex_case_expressed_probes_list)
-ncol(Temporal_Cortex_case_exprs)
+Cerebellum_case_exprs_F_expressed_probes_list<-extract_good_probe_list(Cerebellum_case_exprs_F, 0.9, 0.8)
+length(Cerebellum_case_exprs_F_expressed_probes_list)
 
-Cerebellum_case_expressed_probes_list<-extract_good_probe_list(Cerebellum_case_exprs, 0.9, 0.8)
-head(Cerebellum_case_expressed_probes_list)
-length(Cerebellum_case_expressed_probes_list)
-ncol(Cerebellum_case_exprs)
+Entorhnal_Cortex_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Entorhnal_Cortex_control_exprs_F, 0.9, 0.8)
+length(Entorhnal_Cortex_control_exprs_F_expressed_probes_list)
 
-#apply function to control
+Frontal_Cortex_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Frontal_Cortex_control_exprs_F, 0.9, 0.8)
+length(Frontal_Cortex_control_exprs_F_expressed_probes_list)
 
-Entorhnal_Cortex_control_expressed_probes_list<-extract_good_probe_list(Entorhnal_Cortex_control_exprs, 0.9, 0.8)
-head(Entorhnal_Cortex_control_expressed_probes_list)
-length(Entorhnal_Cortex_control_expressed_probes_list)
-ncol(Entorhnal_Cortex_control_exprs)
+Temporal_Cortex_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Temporal_Cortex_control_exprs_F, 0.9, 0.8)
+length(Temporal_Cortex_control_exprs_F_expressed_probes_list)
 
-Frontal_Cortex_control_expressed_probes_list<-extract_good_probe_list(Frontal_Cortex_control_exprs, 0.9, 0.8)
-head(Frontal_Cortex_control_expressed_probes_list)
-length(Frontal_Cortex_control_expressed_probes_list)
-ncol(Frontal_Cortex_control_exprs)
+Cerebellum_control_exprs_F_expressed_probes_list<-extract_good_probe_list(Cerebellum_control_exprs_F, 0.9, 0.8)
+length(Cerebellum_control_exprs_F_expressed_probes_list)
 
-Temporal_Cortex_control_expressed_probes_list<-extract_good_probe_list(Temporal_Cortex_control_exprs, 0.9, 0.8)
-head(Temporal_Cortex_control_expressed_probes_list)
-length(Temporal_Cortex_control_expressed_probes_list)
-ncol(Temporal_Cortex_control_exprs)
+Entorhnal_Cortex_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Entorhnal_Cortex_case_exprs_M, 0.9, 0.8)
+length(Entorhnal_Cortex_case_exprs_M_expressed_probes_list)
 
-Cerebellum_control_expressed_probes_list<-extract_good_probe_list(Cerebellum_control_exprs, 0.9, 0.8)
-head(Cerebellum_control_expressed_probes_list)
-length(Cerebellum_control_expressed_probes_list)
-ncol(Cerebellum_control_exprs)
+Frontal_Cortex_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Frontal_Cortex_case_exprs_M, 0.9, 0.8)
+length(Frontal_Cortex_case_exprs_M_expressed_probes_list)
 
+Temporal_Cortex_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Temporal_Cortex_case_exprs_M, 0.9, 0.8)
+length(Temporal_Cortex_case_exprs_M_expressed_probes_list)
+
+Cerebellum_case_exprs_M_expressed_probes_list<-extract_good_probe_list(Cerebellum_case_exprs_M, 0.9, 0.8)
+length(Cerebellum_case_exprs_M_expressed_probes_list)
+
+Entorhnal_Cortex_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Entorhnal_Cortex_control_exprs_M, 0.9, 0.8)
+length(Entorhnal_Cortex_control_exprs_M_expressed_probes_list)
+
+Frontal_Cortex_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Frontal_Cortex_control_exprs_M, 0.9, 0.8)
+length(Frontal_Cortex_control_exprs_M_expressed_probes_list)
+
+Temporal_Cortex_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Temporal_Cortex_control_exprs_M, 0.9, 0.8)
+length(Temporal_Cortex_control_exprs_M_expressed_probes_list)
+
+Cerebellum_control_exprs_M_expressed_probes_list<-extract_good_probe_list(Cerebellum_control_exprs_M, 0.9, 0.8)
+length(Cerebellum_control_exprs_M_expressed_probes_list)
 
 # merge list of good probes from both case + control + and all brain regions, sort and keep unique values
 
-good_probe_list<-unique(sort(c(Entorhnal_Cortex_case_expressed_probes_list,
-                               Frontal_Cortex_case_expressed_probes_list,
-                               Temporal_Cortex_case_expressed_probes_list,
-                               Cerebellum_control_expressed_probes_list,
-                               Entorhnal_Cortex_control_expressed_probes_list,
-                               Frontal_Cortex_control_expressed_probes_list,
-                               Temporal_Cortex_control_expressed_probes_list,
-                               Cerebellum_control_expressed_probes_list)))
+good_probe_list<-unique(sort(c(Entorhnal_Cortex_case_exprs_F_expressed_probes_list,
+                               Frontal_Cortex_case_exprs_F_expressed_probes_list,
+                               Temporal_Cortex_case_exprs_F_expressed_probes_list,
+                               Cerebellum_case_exprs_F_expressed_probes_list,
+                               Entorhnal_Cortex_control_exprs_F_expressed_probes_list,
+                               Frontal_Cortex_control_exprs_F_expressed_probes_list,
+                               Temporal_Cortex_control_exprs_F_expressed_probes_list,
+                               Cerebellum_control_exprs_F_expressed_probes_list,
+                               Entorhnal_Cortex_case_exprs_M_expressed_probes_list,
+                               Frontal_Cortex_case_exprs_M_expressed_probes_list,
+                               Temporal_Cortex_case_exprs_M_expressed_probes_list,
+                               Cerebellum_case_exprs_M_expressed_probes_list,
+                               Entorhnal_Cortex_control_exprs_M_expressed_probes_list,
+                               Frontal_Cortex_control_exprs_M_expressed_probes_list,
+                               Temporal_Cortex_control_exprs_M_expressed_probes_list,
+                               Cerebellum_control_exprs_M_expressed_probes_list)))
 
 length(good_probe_list)
-dim(brain_data_normalised_as_data_frame)
+dim(brain_data_normalised_as_data_frame_illID)
 
 # extract good probes from dataset
 
-brain_exprs_good_probes<-brain_data_normalised_as_data_frame[,colnames(brain_data_normalised_as_data_frame)%in%good_probe_list]
+brain_exprs_good_probes<-brain_data_normalised_as_data_frame_illID[,colnames(brain_data_normalised_as_data_frame_illID)%in%good_probe_list]
 
 Entorhnal_Cortex_case_exprs_good_probes<-Entorhnal_Cortex_case_exprs[,colnames(Entorhnal_Cortex_case_exprs)%in%good_probe_list]
 
@@ -279,7 +414,7 @@ Temporal_Cortex_control_exprs_good_probes<-Temporal_Cortex_control_exprs[,colnam
 Cerebellum_control_exprs_good_probes<-Cerebellum_control_exprs[,colnames(Cerebellum_control_exprs)%in%good_probe_list]
 
 
-# check dataframe - all should be 4790
+# check dataframe - all should be 5224
 
 head(Entorhnal_Cortex_case_exprs_good_probes)[1:5]
 dim(Entorhnal_Cortex_case_exprs_good_probes)
@@ -305,16 +440,102 @@ dim(Temporal_Cortex_control_exprs_good_probes)
 head(Cerebellum_control_exprs_good_probes)[1:5]
 dim(Cerebellum_control_exprs_good_probes)
 
-dim(brain_data_normalised_as_data_frame)
-
+dim(brain_data_normalised_as_data_frame_illID)
 
 # create dataframe with good probes - contain all brain regions, case and control
 
-brain_data_normalised_exprs_good_probes<-brain_data_normalised_as_data_frame[colnames(brain_data_normalised_as_data_frame)%in%good_probe_list]
+brain_data_normalised_exprs_good_probes<-brain_data_normalised_as_data_frame_illID[rownames(brain_data_normalised_as_data_frame_illID)%in%good_probe_list,]
 dim(brain_data_normalised_exprs_good_probes)
 head(brain_data_normalised_exprs_good_probes)[1:5]
 
-brain_data_normalised_exprs_good_probes<-as.data.frame(t(brain_data_normalised_exprs_good_probes))
+##### GENDER SPECIFIC PROBE PLOTS #####
+
+Gene_symbols_probes <- mappedkeys(illuminaHumanv4SYMBOL)
+
+# Convert to a list
+Gene_symbols <- as.data.frame(illuminaHumanv4SYMBOL[Gene_symbols_probes])
+
+head(Gene_symbols)
+dim(Gene_symbols)
+
+#extract gene ID
+
+XIST_probe_ID<-subset(Gene_symbols, symbol=="XIST")
+XIST_probe_ID
+
+PRKY_probe_ID<-subset(Gene_symbols, symbol=="PRKY")
+PRKY_probe_ID
+
+NLGN4Y_probe_ID<-subset(Gene_symbols, symbol=="NLGN4Y")
+NLGN4Y_probe_ID
+
+TMSB4Y_probe_ID<-subset(Gene_symbols, symbol=="TMSB4Y")
+TMSB4Y_probe_ID
+
+USP9Y_probe_ID<-subset(Gene_symbols, symbol=="USP9Y")
+USP9Y_probe_ID
+
+UTY_probe_ID<-subset(Gene_symbols, symbol=="UTY")
+UTY_probe_ID
+
+# merge all genes to check
+
+gene_list<-rbind(XIST_probe_ID,
+                 NLGN4Y_probe_ID,
+                 TMSB4Y_probe_ID,
+                 USP9Y_probe_ID,
+                 UTY_probe_ID)
+
+gene_list
+
+#create function to plot
+plot_gender_specific_genes<-function(Expression_table, gender_info, genes_to_extract, threshold, boxplot_title){
+  #extract gene of interest
+  Expression_table_gene_check<-as.data.frame(Expression_table[,genes_to_extract[,1]])
+  #check all probes extracted
+  print(c("all probes extracted:", dim(Expression_table_gene_check)[2]==dim(genes_to_extract)[1]))
+  # change colnames TO GENE SYMBOL using genes to extract file
+  for (x in 1:dim(Expression_table_gene_check)[2]){
+    colnames(Expression_table_gene_check)[x]<-gene_list[genes_to_extract$probe_id==colnames(Expression_table_gene_check)[x],2]
+  }
+  # add in gender information
+  Expression_table_gene_check_gender<-merge(gender_info, Expression_table_gene_check, by="row.names")
+  rownames(Expression_table_gene_check_gender)<-Expression_table_gene_check_gender$Row.names
+  Expression_table_gene_check_gender$Row.names<-NULL
+  #melt dataframe for plot
+  Expression_table_gene_check_gender_melt<-melt(Expression_table_gene_check_gender, by=Gender)
+  # calculate user defined percentie threshold
+  Expression_table_t<-as.data.frame(t(Expression_table))
+  sample_quantiles<-apply(Expression_table_t, 2, quantile, probs=threshold)
+  # mean of used defined threshold across samples
+  mean_threshold=mean(sample_quantiles)
+  #plot
+  qplot(variable, value, colour=get(colnames(gender_info)), data = Expression_table_gene_check_gender_melt, geom = c("boxplot", "jitter")) + 
+    geom_hline(yintercept = mean_threshold) +
+    ggtitle(boxplot_title) +
+    labs(x="Gene",y="Expression", colour = colnames(gender_info)) 
+}
+
+#plot
+
+setwd(work_dir)
+
+dir.create(paste(work_dir,"Gender_specific_gene_plots", sep="/"))
+Gender_plots_dir=paste(work_dir,"Gender_specific_gene_plots", sep="/")
+
+setwd(Gender_plots_dir)
+
+pdf("Gender_specific_gene_plot_and_detectable_cut_off_threshold_used.pdf")
+plot_gender_specific_genes(Entorhnal_Cortex_case_exprs, gender_comparison[1], gene_list, 0.9, "Entorhnal_Cortex_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Frontal_Cortex_case_exprs, gender_comparison[1], gene_list, 0.9, "Frontal_Cortex_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Temporal_Cortex_case_exprs, gender_comparison[1], gene_list, 0.9, "Temporal_Cortex_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Cerebellum_case_exprs, gender_comparison[1], gene_list, 0.9, "Cerebellum_case_exprs_gender_specific_genes")
+dev.off()
+
+cbind(Gender_missmatch, Diagnosis[rownames(Gender_missmatch),])
+Gender_missmatch
+
+
 
 ##### PCA ####
 
@@ -365,7 +586,7 @@ Diagnosis_pca_color<-labels2colors(as.character(Diagnosis_pca))
 
 # pca plot - color by disease - case/control
 plot(pca$rotation[,1:2], main=" PCA plot coloured by Disease Status",col="black", pch=21,bg=Diagnosis_pca_color)
-legend('bottomright', as.character(unique(Diagnosis_pca)), fill=unique(Diagnosis_pca_color))
+legend('bottomleft', as.character(unique(Diagnosis_pca)), fill=unique(Diagnosis_pca_color))
 
 #pca plot - color by brain region
 
@@ -381,7 +602,7 @@ brain_region_pca_color<-labels2colors(as.character(brain_region_pca))
 
 # pca plot - color by disease - case/control
 plot(pca$rotation[,1:2], main=" PCA plot coloured by Brain Region",col="black", pch=21,bg=brain_region_pca_color)
-legend('bottomright', unique(brain_region_pca), fill=unique(brain_region_pca_color))
+legend('bottomleft', unique(brain_region_pca), fill=unique(brain_region_pca_color))
 
 #plot to pdf
 
@@ -436,16 +657,39 @@ Frontal_Cortex_good_probes<-rbind(Frontal_Cortex_case_exprs_good_probes, Frontal
 Temporal_Cortex_good_probes<-rbind(Temporal_Cortex_case_exprs_good_probes, Temporal_Cortex_control_exprs_good_probes)
 Cerebellum_good_probes<-rbind(Cerebellum_case_exprs_good_probes, Cerebellum_control_exprs_good_probes)
 
+#add gender in 
+
+Entorhnal_Cortex_good_probes<-merge(gender_comparison[1], Entorhnal_Cortex_good_probes, by="row.names")
+rownames(Entorhnal_Cortex_good_probes)<-Entorhnal_Cortex_good_probes$Row.names
+Entorhnal_Cortex_good_probes$Row.names<-NULL
+
+Frontal_Cortex_good_probes<-merge(gender_comparison[1], Frontal_Cortex_good_probes, by="row.names")
+rownames(Frontal_Cortex_good_probes)<-Frontal_Cortex_good_probes$Row.names
+Frontal_Cortex_good_probes$Row.names<-NULL
+
+Temporal_Cortex_good_probes<-merge(gender_comparison[1], Temporal_Cortex_good_probes, by="row.names")
+rownames(Temporal_Cortex_good_probes)<-Temporal_Cortex_good_probes$Row.names
+Temporal_Cortex_good_probes$Row.names<-NULL
+
+Cerebellum_good_probes<-merge(gender_comparison[1], Cerebellum_good_probes, by="row.names")
+rownames(Cerebellum_good_probes)<-Cerebellum_good_probes$Row.names
+Cerebellum_good_probes$Row.names<-NULL
+
+head(Entorhnal_Cortex_good_probes)[1:5]
+head(Frontal_Cortex_good_probes)[1:5]
+head(Temporal_Cortex_good_probes)[1:5]
+head(Cerebellum_good_probes)[1:5]
+
 # create sva function
 
 check_SV_in_data<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_pheno<-sorted_by_diagnosis[1]
-  dataset_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
-  #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_pheno)
+  dataset_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
+  #full model matrix for Diagnosis + Gender
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_pheno)
   # check number of SV in data
   num.sv(dataset_exprs, mod, method="leek")
 }
@@ -463,10 +707,10 @@ adjust_for_sva<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_sva_pheno<-sorted_by_diagnosis[1]
-  dataset_sva_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
+  dataset_sva_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_sva_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_sva_pheno)
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_sva_pheno)
   mod0 = model.matrix(~1, data=dataset_sva_pheno)
   # number of SV
   num.sv(dataset_sva_exprs, mod, method="leek")
@@ -494,13 +738,15 @@ adjust_for_sva<-function(dataset){
   return(clean_data_with_pheno)
 }
 
-Frontal_Cortex_good_probes_sva_adjusted<-adjust_for_sva(Frontal_Cortex_good_probes)
+# run sva
+
 Temporal_Cortex_good_probes_sva_adjusted<-adjust_for_sva(Temporal_Cortex_good_probes)
-Cerebellum_good_probes_sva_adjusted<-adjust_for_sva(Cerebellum_good_probes)
 
 #Entorhinal Cortex no SVA adjusment
 
 Entorhinal_Cortex_good_probes_sva_adjusted<-Entorhnal_Cortex_good_probes
+Frontal_Cortex_good_probes_sva_adjusted<-Frontal_Cortex_good_probes
+Cerebellum_good_probes_sva_adjusted<-Cerebellum_good_probes
 
 # separate case and control
 
@@ -534,11 +780,12 @@ dim(Entorhinal_Cortex_good_probes_sva_adjusted_control)
 
 ##### SAMPLE NETWORK PLOT ######
 
+
 # sample plot function - taken from steve expression pipeline
 
 sampleNetwork_plot <- function(dataset) {
-  datExprs<-t(dataset[2:dim(dataset)[2]])
-  diagnosis<-dataset[1]
+  datExprs<-t(dataset[3:dim(dataset)[2]])
+  diagnosis<-dataset[2]
   gp_col <- "group"
   cat(" setting up data for qc plots","\r","\n")
   ## expression matrix and IAC
@@ -609,7 +856,7 @@ sampleNetwork_plot <- function(dataset) {
 # create functio to ID outliers
 
 names_of_outliers<-function(dataset, threshold){
-  datExprs<-t(dataset[2:dim(dataset)[2]])
+  datExprs<-t(dataset[3:dim(dataset)[2]])
   IAC = cor(datExprs, method = "p", use = "p")
   diag(IAC) = 0
   A.IAC = ((1 + IAC)/2)^2  ## ADJACENCY MATRIX
@@ -654,7 +901,8 @@ run_sample_network_plot<-function(dataset, threshold){
   return(dataset_QC)
 }
 
-# run sample network on entorhinal Cortex
+
+# # run sample network on entorhinal Cortex
 
 Entorhinal_Cortex_good_probes_sva_adjusted_case_QC<-run_sample_network_plot(Entorhinal_Cortex_good_probes_sva_adjusted_case, -3)
 Entorhinal_Cortex_good_probes_sva_adjusted_control_QC<-run_sample_network_plot(Entorhinal_Cortex_good_probes_sva_adjusted_control, -3)
@@ -738,14 +986,15 @@ brain_data_QCd<-rbind(Frontal_Cortex_good_probes_sva_adjusted_case_QC,
                       Entorhinal_Cortex_good_probes_sva_adjusted_control_QC)
 
 dim(brain_data_QCd)
+head(brain_data_QCd)[1:5]
 
 ##### PCA ON CLEAN DATA ####
 
 # calculate pca
-pca_QCd<-prcomp(t(brain_data_QCd[2:dim(brain_data_QCd)[2]]))
+pca_QCd<-prcomp(t(brain_data_QCd[3:dim(brain_data_QCd)[2]]))
 
 # sumary of pca
-summary_pca_QCd<-summary(t(brain_data_QCd[2:dim(brain_data_QCd)[2]]))
+summary_pca_QCd<-summary(t(brain_data_QCd[3:dim(brain_data_QCd)[2]]))
 
 # pca matrix plot
 
@@ -781,12 +1030,12 @@ setwd(pca_dir)
 pdf("PCA_plot_prior_and_after_QC.pdf")
 # pca plot by diagnosis
 plot(pca$rotation[,1:2], main=" PCA plot coloured by disease status ",col="black", pch=21,bg=Diagnosis_pca_color)
-legend('bottomright', as.character(unique(Diagnosis_pca)), fill=unique(Diagnosis_pca_color))
+legend('bottomleft', as.character(unique(Diagnosis_pca)), fill=unique(Diagnosis_pca_color))
 plot(pca_QCd$rotation[,1:2], main=" PCA plot coloured by disease status after QC",col="black", pch=21,bg=Diagnosis_pca_color_QCd)
 legend('bottomleft', as.character(unique(brain_data_QCd$Diagnosis)), fill=unique(Diagnosis_pca_color_QCd))
 #pca plot by brain region
 plot(pca$rotation[,1:2], main=" PCA plot coloured by brain region ",col="black", pch=21,bg=brain_region_pca_color)
-legend('bottomright', as.character(unique(brain_region_pca)), fill=unique(brain_region_pca_color))
+legend('bottomleft', as.character(unique(brain_region_pca)), fill=unique(brain_region_pca_color))
 plot(pca_QCd$rotation[,1:2], main=" PCA plot coloured by brain region after QC",col="black", pch=21,bg=brain_region_pca_color_QCd)
 legend('bottomleft', as.character(unique(brain_region_pca_QCd)), fill=unique(brain_region_pca_color_QCd))
 dev.off()
@@ -798,61 +1047,17 @@ setwd(work_dir)
 # biomart converted most DE gene illumina probe ID to multiple Entrez gene IDS - so was droppped
 # further investigation found this is fault of biomart.
 
-#convert nuid back to illumina id
-
-head(brain_data_QCd)[1:5]
-dim(brain_data_QCd)
-
-head(anno_probes)
-dim(anno_probes)
-
-nuID_ilmID<-anno_probes[c(1,2)]
-
-head(nuID_ilmID)
-nuID_ilmID<-unique(nuID_ilmID)
-rownames(nuID_ilmID)<- nuID_ilmID$nuID
-nuID_ilmID$nuID<-NULL
-
-brain_data_QCd_illID<-merge(nuID_ilmID, t(brain_data_QCd[2:dim(brain_data_QCd)[2]]), by="row.names")
-
-dim(nuID_ilmID)
-dim(brain_data_QCd)
-dim(brain_data_QCd_illID)
-
-head(brain_data_QCd_illID)[1:5]
-
-rownames(brain_data_QCd_illID)<-brain_data_QCd_illID$PROBE_ID
-brain_data_QCd_illID$Row.names<-NULL
-brain_data_QCd_illID$PROBE_ID<-NULL
-
-head(brain_data_QCd_illID)[1:5]
-
-brain_data_QCd_illID<-as.data.frame(t(brain_data_QCd_illID))
-head(brain_data_QCd_illID)[1:5]
-
-## create a list of probe ids to convert
-
-Illumina_HT_12_v4_probe_list<-as.data.frame(colnames(brain_data_QCd_illID))
-
-##  map probe id to entrez id using biomart
-
-head(Illumina_HT_12_v4_probe_list)
-
-# # change colname to "probe_id" for all chips
-
-colnames(Illumina_HT_12_v4_probe_list)<-"probe_id"
- 
 # create convert_probe_id_to_entrez_id function 
- 
- convert_probe_id_to_entrez_id <- function(expression_dataset, probe_mapping_file){
-   # transform dataset # - removed this step
-   expression_dataset_t<-as.data.frame(expression_dataset)
-   # keep only probes which appear in probe_mapping_file
-   data_frame_in_probe_mapper<-expression_dataset_t[colnames(expression_dataset_t)%in%probe_mapping_file$probe_id]
-   # match probe id in data_frame_in_probe_mapper to that in probe_mapping_file and convert to entrez id
-   colnames(data_frame_in_probe_mapper)<-probe_mapping_file$entrezgene[match(colnames(data_frame_in_probe_mapper), probe_mapping_file$probe_id)]
- return(data_frame_in_probe_mapper)
- }
+
+convert_probe_id_to_entrez_id <- function(expression_dataset, probe_mapping_file){
+  # transform dataset # - removed this step
+  expression_dataset_t<-as.data.frame(expression_dataset)
+  # keep only probes which appear in probe_mapping_file
+  data_frame_in_probe_mapper<-expression_dataset_t[colnames(expression_dataset_t)%in%probe_mapping_file$probe_id]
+  # match probe id in data_frame_in_probe_mapper to that in probe_mapping_file and convert to entrez id
+  colnames(data_frame_in_probe_mapper)<-probe_mapping_file$entrezgene[match(colnames(data_frame_in_probe_mapper), probe_mapping_file$probe_id)]
+  return(data_frame_in_probe_mapper)
+}
 
 # Get the probe identifiers that are mapped to an ENTREZ Gene ID using illuminaHumanv4.db
 mapped_probes <- mappedkeys(illuminaHumanv4ENTREZID)
@@ -873,7 +1078,7 @@ anyDuplicated(illuminaHumanv4.db_mapping$probe_id)
 anyDuplicated(illuminaHumanv4.db_mapping$entrezgene)
 
 illuminaHumanv4.db_mapping_entrez_id_unique<-illuminaHumanv4.db_mapping[!(duplicated(illuminaHumanv4.db_mapping$probe_id) | duplicated(illuminaHumanv4.db_mapping$probe_id, fromLast= TRUE)),]
- 
+
 head(illuminaHumanv4.db_mapping_entrez_id_unique)
 dim(illuminaHumanv4.db_mapping_entrez_id_unique)
 
@@ -883,7 +1088,7 @@ brain_data_QCd_illID_entrez_id<-convert_probe_id_to_entrez_id(brain_data_QCd_ill
 dim(brain_data_QCd_illID)
 dim(brain_data_QCd_illID_entrez_id)
 length(which(duplicated(colnames(brain_data_QCd_illID_entrez_id))))
- 
+
 head(brain_data_QCd_illID_entrez_id[100:110])
 
 ##### COLLAPSE MULTIPPLE ENTREZ ID BY SELECTING ONE WITH HIGHEST AVERAGE EXPRESSION ACROSS SAMPLES ######
@@ -920,7 +1125,6 @@ length(which(duplicated(colnames(brain_data_QCd_illID_entrez_id_unique))))
 
 head(brain_data_QCd_illID_entrez_id_unique[1:5])
 
-
 ##### MERGE EXPRESSION DATA AND PHENOTYPE DATA #####
 
 # Tissue
@@ -940,8 +1144,11 @@ head(sample_data_ba)
 
 sample_data_ba_to_attach <- sample_data_ba[c(3,4,6,10,11)]
 
+c("Tissue", "Clinical_Gender", "Predicted_Gender", "Diagnosis", "BRAAK", "APOE", "Age", "MMSE", "Diagnosis_sub_cat")
+
+
 head(sample_data_ba_to_attach)
-colnames(sample_data_ba_to_attach)<-c("Tissue", "Diagnosis", "Gender", "Age", "BRAAK")
+colnames(sample_data_ba_to_attach)<-c("Tissue", "Diagnosis", "Clinical_Gender", "Age", "BRAAK")
 head(sample_data_ba_to_attach)
 
 sample_data_ba_to_attach$MMSE<-"Unknown"
@@ -952,10 +1159,20 @@ head(sample_data_ba_to_attach)
 
 # standardise phenotpye info
 
-table(sample_data_ba_to_attach$Gender)
-sample_data_ba_to_attach[sample_data_ba_to_attach$Gender=="MALE",3]<-"Male"
-sample_data_ba_to_attach[sample_data_ba_to_attach$Gender=="FEMALE",3]<-"Female"
-table(sample_data_ba_to_attach$Gender)
+table(sample_data_ba_to_attach$Clinical_Gender)
+sample_data_ba_to_attach[sample_data_ba_to_attach$Clinical_Gender=="MALE",3]<-"male"
+sample_data_ba_to_attach[sample_data_ba_to_attach$Clinical_Gender=="FEMALE",3]<-"female"
+table(sample_data_ba_to_attach$Clinical_Gender)
+
+# add predicted gender
+
+head(gender_comparison)
+
+sample_data_ba_to_attach<-merge(sample_data_ba_to_attach, gender_comparison[2], by="row.names")
+head(sample_data_ba_to_attach)
+
+rownames(sample_data_ba_to_attach)<-sample_data_ba_to_attach$Row.names
+sample_data_ba_to_attach$Row.names<-NULL
 
 table(sample_data_ba_to_attach$Tissue)
 
@@ -972,24 +1189,15 @@ head(sample_data_ba_to_attach)
 
 table(sample_data_ba_to_attach$BRAAK)
 
-sample_data_ba_to_attach[sample_data_ba_to_attach$Diagnosis=="AD" & sample_data_ba_to_attach$BRAAK=="0" , 7]<-"Control"
-sample_data_ba_to_attach[sample_data_ba_to_attach$Diagnosis=="AD" & sample_data_ba_to_attach$BRAAK=="1" , 7]<-"Incipient_AD"
-sample_data_ba_to_attach[sample_data_ba_to_attach$Diagnosis=="AD" & sample_data_ba_to_attach$BRAAK=="2" , 7]<-"Incipient_AD"
-sample_data_ba_to_attach[sample_data_ba_to_attach$Diagnosis=="AD" & sample_data_ba_to_attach$BRAAK=="3" , 7]<-"Moderate_AD"
-sample_data_ba_to_attach[sample_data_ba_to_attach$Diagnosis=="AD" & sample_data_ba_to_attach$BRAAK=="4" , 7]<-"Moderate_AD"
-sample_data_ba_to_attach[sample_data_ba_to_attach$Diagnosis=="AD" & sample_data_ba_to_attach$BRAAK=="5" , 7]<-"Severe_AD"
-sample_data_ba_to_attach[sample_data_ba_to_attach$Diagnosis=="AD" & sample_data_ba_to_attach$BRAAK=="6" , 7]<-"Severe_AD"
+sample_data_ba_to_attach[sample_data_ba_to_attach$BRAAK=="0" , 7]<-"Control"
+sample_data_ba_to_attach[sample_data_ba_to_attach$BRAAK=="1" , 7]<-"Incipient_AD"
+sample_data_ba_to_attach[sample_data_ba_to_attach$BRAAK=="2" , 7]<-"Incipient_AD"
+sample_data_ba_to_attach[sample_data_ba_to_attach$BRAAK=="3" , 7]<-"Moderate_AD"
+sample_data_ba_to_attach[sample_data_ba_to_attach$BRAAK=="4" , 7]<-"Moderate_AD"
+sample_data_ba_to_attach[sample_data_ba_to_attach$BRAAK=="5" , 7]<-"Severe_AD"
+sample_data_ba_to_attach[sample_data_ba_to_attach$BRAAK=="6" , 7]<-"Severe_AD"
 
 table(sample_data_ba_to_attach$Diagnosis_sub_cat, exclude=NULL)
-
-#check if any AD diagnosis has Unknown sub dioagnosis - none
-sample_data_ba_to_attach[sample_data_ba_to_attach$Diagnosis=="AD" & sample_data_ba_to_attach$Diagnosis_sub_cat=="Unknown", 2]
-
-#change Unknown sub-diagnosis to Control
-sample_data_ba_to_attach[sample_data_ba_to_attach$Diagnosis=="Control" & sample_data_ba_to_attach$Diagnosis_sub_cat=="Unknown" , 7]<-"Control"
-table(sample_data_ba_to_attach$Diagnosis_sub_cat, exclude=NULL)
-
-# - need to do sub cat for diagnosis==CO_AD
 
 # merge pheno + exprs data
 
@@ -1006,6 +1214,22 @@ brain_data_with_pheno<-brain_data_with_pheno[,order(names(brain_data_with_pheno)
 
 head(brain_data_with_pheno)[1:10]
 
+##### WRITE LIST OF CONTROL GENES EXPRESSED #####
+
+setwd("/media/hamel/1TB/Projects/Brain_expression/2.Expression_across_brain_regions_in_control_datasets/1.Data")
+
+# convert nuID to Entrez ID
+
+head(nuID_ilmID)
+
+length(nuID_ilmID[Entorhnal_Cortex_control_expressed_probes_list,])
+length(Entorhnal_Cortex_control_expressed_probes_list)
+
+write(unique(sort(c(Entorhnal_Cortex_control_exprs_F_expressed_probes_list, Entorhnal_Cortex_control_exprs_M_expressed_probes_list))), file="In-house_Entorhinal_Cortex.txt")
+write(unique(sort(c(Frontal_Cortex_control_exprs_F_expressed_probes_list, Frontal_Cortex_control_exprs_M_expressed_probes_list))), file="In-house_Frontal_Cortex.txt")
+write(unique(sort(c(Temporal_Cortex_control_exprs_F_expressed_probes_list, Temporal_Cortex_control_exprs_M_expressed_probes_list))), file="In-house_Temporal_Cortex.txt")
+write(unique(sort(c(Cerebellum_control_exprs_F_expressed_probes_list, Cerebellum_control_exprs_M_expressed_probes_list))), file="In-house_Cerebellum.txt")
+
 ##### SAVE #####
 
 setwd(clean_data_dir)
@@ -1016,18 +1240,12 @@ setwd(work_dir)
 
 save.image("Process_inhouse_brain_data2.Rdata")
 
-
-
 ######## EXTRA QUICK DIFF EXPR AND CMAP TEST ######
 
-
-library(sva)
 library(limma)
 library("org.Hs.eg.db")
 library(stringi)
 library(stringr)
-
-
 
 head(brain_data_with_pheno)[1:5]
 
@@ -1035,8 +1253,8 @@ check_SV_in_data<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_pheno<-sorted_by_diagnosis[1:8]
-  dataset_exprs<-t(sorted_by_diagnosis[9:dim(sorted_by_diagnosis)[2]])
+  dataset_pheno<-sorted_by_diagnosis[1:9]
+  dataset_exprs<-t(sorted_by_diagnosis[10:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
   mod = model.matrix(~Diagnosis, data=dataset_pheno)
   # check number of SV in data
@@ -1053,7 +1271,7 @@ run_diff_exprs_analysis<-function(dataset, x){
   #sort dataset by Diagnosis column - want AD samples 1st
   dataset_sorted<-dataset[order(dataset$Diagnosis),]
   #split dataset into expres and diagnosis
-  dataset_exprs<-dataset_sorted[9:dim(dataset_sorted)[2]]
+  dataset_exprs<-dataset_sorted[10:dim(dataset_sorted)[2]]
   dataset_pheno<-dataset_sorted[,5]
   #replace sample name to numbers
   rownames(dataset_exprs)<-c(1:dim(dataset)[1])
@@ -1095,13 +1313,13 @@ test_up_gene_symbol<-gene_symbol_lookup_table[gene_symbol_lookup_table$gene_id %
 head(test_up_gene_symbol)
 length(unique(test_up_gene_symbol$symbol))
 
-setwd("/media/hamel/1TB/Projects/Brain_expression/1.Data/AD/inhouse_brain/Full_dataset_reprocess_2/quick_diff_exp_cmap_check")
+setwd("/media/hamel/1TB/Projects/Brain_expression/1.Data/1.Re-process_with_new_pipeline/AD/inhouse_data/quick_diff_exp_cmap_check/")
 
 write.table(as.data.frame(unique(test_up_gene_symbol$symbol)),
             row.names=F, 
             col.names=F, 
             quote=F, 
-            file="re-processed_inhouse_p_0.01_up.txt")
+            file="re-processed2_inhouse_p_0.01_up.txt")
 
 
 setwd(work_dir)

@@ -62,6 +62,7 @@ library(sva)
 library(hgu133a.db)
 library(reshape)
 library(massiR)
+library(ggplot2)
 
 ###### DOWNLOAD DATA #####
 
@@ -819,6 +820,8 @@ head(brain_data_normalised_exprs_good_probes)[1:5]
 
 ##### GENDER SPECIFIC PROBE PLOTS #####
 
+# using dataframe before probe removal
+
 # get gene symbol list for chip
 Gene_symbols_probes <- mappedkeys(hgu133aSYMBOL)
 
@@ -831,6 +834,9 @@ dim(Gene_symbols)
 #xist gene - 
 XIST_probe_ID<-subset(Gene_symbols, symbol=="XIST")
 XIST_probe_ID
+
+PRKY_probe_ID<-subset(Gene_symbols, symbol=="PRKY")
+PRKY_probe_ID
 
 NLGN4Y_probe_ID<-subset(Gene_symbols, symbol=="NLGN4Y")
 NLGN4Y_probe_ID
@@ -848,6 +854,7 @@ UTY_probe_ID
 
 gene_list<-rbind(XIST_probe_ID,
                  NLGN4Y_probe_ID,
+                 PRKY_probe_ID,
                  TMSB4Y_probe_ID,
                  USP9Y_probe_ID,
                  UTY_probe_ID)
@@ -869,7 +876,6 @@ plot_gender_specific_genes<-function(Expression_table, gender_info, genes_to_ext
   #melt dataframe for plot
   Expression_table_gene_check_gender_melt<-melt(Expression_table_gene_check_gender, by=Gender)
   # calculate user defined percentie threshold
-  Expression_table_t<-as.data.frame(t(Expression_table))
   sample_quantiles<-apply(Expression_table, 2, quantile, probs=threshold)
   # mean of used defined threshold across samples
   mean_threshold=mean(sample_quantiles)
@@ -1914,8 +1920,6 @@ dim(phenotype_to_attach)
 
 dim(brain_data_QCd_entrez_id_unique_pheno)
 
-# lost 7 samples as no pheno available
-
 ##### SAVE EXPRESSION DATAFRAME #####
 
 setwd(clean_data_dir)
@@ -1932,18 +1936,18 @@ write.table(phenotype, file="AMP_MSBB_U133A_phenotype_data2.txt", sep="\t")
 
 setwd("/media/hamel/1TB/Projects/Brain_expression/2.Expression_across_brain_regions_in_control_datasets/1.Data")
 
-write(Frontal_Pole_control_expressed_probes_list, file="AMP_MSBB_U133A_Frontal_Pole.txt") 
-write(Precentral_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Precentral_Gyrus.txt") 
-write(Inferior_Frontal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Inferior_Frontal_Gyrus.txt") 
-write(Dorsolateral_Prefrontal_Cortex_control_expressed_probes_list, file="AMP_MSBB_U133A_Dorsolateral_Prefrontal_Cortex.txt") 
-write(Superior_Parietal_Lobule_control_expressed_probes_list, file="AMP_MSBB_U133A_Superior_Parietal_Lobule.txt") 
-write(Prefrontal_Cortex_control_expressed_probes_list, file="AMP_MSBB_U133A_Prefrontal_Cortex.txt") 
-write(Parahippocampal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Parahippocampal_Gyrus.txt") 
-write(Hippocampus_control_expressed_probes_list, file="AMP_MSBB_U133A_Hippocampus.txt") 
-write(Inferior_Temporal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Inferior_Temporal_Gyrus.txt") 
-write(Middle_Temporal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Middle_Temporal_Gyrus.txt") 
-write(Superior_Temporal_Gyrus_control_expressed_probes_list, file="AMP_MSBB_U133A_Superior_Temporal_Gyrus.txt") 
-write(Temporal_Pole_control_expressed_probes_list, file="AMP_MSBB_U133A_Temporal_Pole.txt") 
+write(unique(sort(c(Frontal_Pole_control_exprs_F_expressed_probes_list, Frontal_Pole_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Frontal_Pole.txt")
+write(unique(sort(c(Precentral_Gyrus_control_exprs_F_expressed_probes_list, Precentral_Gyrus_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Precentral_Gyrus.txt")
+write(unique(sort(c(Inferior_Frontal_Gyrus_control_exprs_F_expressed_probes_list, Inferior_Frontal_Gyrus_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Inferior_Frontal_Gyrus.txt")
+write(unique(sort(c(Dorsolateral_Prefrontal_Cortex_control_exprs_F_expressed_probes_list, Dorsolateral_Prefrontal_Cortex_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Dorsolateral_Prefrontal_Cortex.txt")
+write(unique(sort(c(Superior_Parietal_Lobule_control_exprs_F_expressed_probes_list, Superior_Parietal_Lobule_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Superior_Parietal_Lobule.txt")
+write(unique(sort(c(Prefrontal_Cortex_control_exprs_F_expressed_probes_list, Prefrontal_Cortex_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Prefrontal_Cortex.txt")
+write(unique(sort(c(Parahippocampal_Gyrus_control_exprs_F_expressed_probes_list, Parahippocampal_Gyrus_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Parahippocampal_Gyrus.txt")
+write(unique(sort(c(Hippocampus_control_exprs_F_expressed_probes_list, Hippocampus_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Hippocampus.txt")
+write(unique(sort(c(Inferior_Temporal_Gyrus_control_exprs_F_expressed_probes_list, Inferior_Temporal_Gyrus_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Inferior_Temporal_Gyrus.txt")
+write(unique(sort(c(Middle_Temporal_Gyrus_control_exprs_F_expressed_probes_list, Middle_Temporal_Gyrus_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Middle_Temporal_Gyrus.txt")
+write(unique(sort(c(Superior_Temporal_Gyrus_control_exprs_F_expressed_probes_list, Superior_Temporal_Gyrus_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Superior_Temporal_Gyrus.txt")
+write(unique(sort(c(Temporal_Pole_control_exprs_F_expressed_probes_list, Temporal_Pole_control_exprs_M_expressed_probes_list))), file="AMP_MSBB_U133A_Temporal_Pole.txt")
 
 ##### SAVE IMAGE #####
 
