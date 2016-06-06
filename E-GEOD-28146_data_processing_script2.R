@@ -963,7 +963,7 @@ write.table(phenotype_data, file="E-GEOD-28146_phenotype_data2.txt", sep="\t")
 
 setwd("/media/hamel/1TB/Projects/Brain_expression/2.Expression_across_brain_regions_in_control_datasets/1.Data")
 
-write(unique(sort(c(control_exprs_M_expressed_probes_list, control_exprs_F_expressed_probes_list))), file="AMP_MSBB_U133B_Frontal_Pole.txt")
+write(unique(sort(c(control_exprs_M_expressed_probes_list, control_exprs_F_expressed_probes_list))), file="E-GEOD-28146_Frontal_Pole.txt")
 
 ##### SAVE IMAGE #####
 
