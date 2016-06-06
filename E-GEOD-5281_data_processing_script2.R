@@ -27,7 +27,7 @@ options=(stringAsFactors=FALSE)
 
 raw_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/AD/E-GEOD-5281/Raw_Data"
 
-work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/2.Re-process_with_new_pipeline/AD/E-GEOD-5281/Pre-Processing"
+work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/1.Re-process_with_new_pipeline/AD/E-GEOD-5281/Pre-Processing"
 
 setwd(work_dir)
 
@@ -44,16 +44,6 @@ dir.create(paste(work_dir,"sample_network_plots", sep="/"))
 sample_network_dir=paste(work_dir,"sample_network_plots", sep="/")
 
 ##### LOAD LIBRARIES ####
-
-library(ArrayExpress)
-library(affy)
-library(lumi)
-library(biomaRt)
-library(WGCNA)
-library(pamr)
-library(limma)
-library(sva)
-library(hgu133plus2.db)
 
 ##### DOWNLOAD RAW DATA #####
 
@@ -167,16 +157,73 @@ anyDuplicated(rownames(phenotype_data))
 
 ##### GENDER CHECK ##### 
 
-# XIST:
-# 1427262_at 
-# 1427263_at 
-# 1436936_s_at
-# 1442137_at 
-# 1458435_at 
+table(phenotype_data$Characteristics.sex.)
 
-# PRKY
+head(phenotype_data)
+names(phenotype_data)
 
-# individual gender uknown - total 16 males and 19 females. estimatung gender based on XIST gene
+# gender_information
+gender_info<-phenotype_data[16]
+colnames(gender_info)<-"Gender"
+table(gender_info$Gender)
+head(gender_info)
+
+#separae male/female IDs
+female_samples<-subset(gender_info, Gender=="female")
+male_samples<-subset(gender_info, Gender=="male")
+
+head(female_samples)
+head(male_samples)
+
+head(brain_data_normalised_as_data_frame)[1:5]
+
+# get Y choromosome genes
+data(y.probes)
+names(y.probes)
+
+y_chromo_probes <- data.frame(y.probes["affy_hg_u133_plus_2"])
+
+# extract Y chromosome genes from dataset
+eset.select.out <- massi_select(brain_data_normalised_as_data_frame, y_chromo_probes)
+
+massi_y_plot(eset.select.out)
+massi_cluster_plot(eset.select.out)
+
+# run gender predict
+eset.results <- massi_cluster(eset.select.out)
+
+#extract gender prediction
+predicted_gender<-(eset.results$massi.results)[c(1,5)]
+rownames(predicted_gender)<-predicted_gender$ID
+predicted_gender$ID<-NULL
+colnames(predicted_gender)<-"Predicted_Gender"
+
+#compare to clinical Gender
+#standardise
+
+# gender_info$Gender<-as.character(gender_info$Gender)
+# gender_info[gender_info$Gender=="M",]<-"male"
+# gender_info[gender_info$Gender=="F",]<-"female"
+
+#merge
+gender_comparison<-merge(gender_info, predicted_gender, by="row.names")
+rownames(gender_comparison)<-gender_comparison$Row.names
+gender_comparison$Row.names<-NULL
+colnames(gender_comparison)<-c("Clinical_Gender", "Predicted_Gender")
+head(gender_comparison)
+
+#differences
+
+Gender_missmatch<-gender_comparison[which(gender_comparison$Clinical_Gender!=gender_comparison$Predicted_Gender),]
+Gender_missmatch
+
+# look at missmatch 
+
+Diagnosis[rownames(Gender_missmatch),]
+
+gender_check_results<-eset.results$massi.results
+
+gender_check_results[gender_check_results$ID %in% rownames(Gender_missmatch),]
 
 ##### PROBE ID DETECTION #####
 
@@ -264,6 +311,35 @@ head(Posterior_Singulate_control_exprs)[1:5]
 head(Primary_Visual_Cortex_control_exprs)[1:5]
 head(Superior_Frontal_Gyrus_control_exprs)[1:5]
 
+# separate by gender
+Entorhinal_Cortex_control_exprs_F<-Entorhinal_Cortex_control_exprs[colnames(Entorhinal_Cortex_control_exprs)%in%rownames(female_samples)]
+hippocampus_control_exprs_F<-hippocampus_control_exprs[colnames(hippocampus_control_exprs)%in%rownames(female_samples)]
+Medial_Temporal_Gyrus_control_exprs_F<-Medial_Temporal_Gyrus_control_exprs[colnames(Medial_Temporal_Gyrus_control_exprs)%in%rownames(female_samples)]
+Posterior_Singulate_control_exprs_F<-Posterior_Singulate_control_exprs[colnames(Posterior_Singulate_control_exprs)%in%rownames(female_samples)]
+Primary_Visual_Cortex_control_exprs_F<-Primary_Visual_Cortex_control_exprs[colnames(Primary_Visual_Cortex_control_exprs)%in%rownames(female_samples)]
+Superior_Frontal_Gyrus_control_exprs_F<-Superior_Frontal_Gyrus_control_exprs[colnames(Superior_Frontal_Gyrus_control_exprs)%in%rownames(female_samples)]
+
+Entorhinal_Cortex_case_exprs_F<-Entorhinal_Cortex_case_exprs[colnames(Entorhinal_Cortex_case_exprs)%in%rownames(female_samples)]
+hippocampus_case_exprs_F<-hippocampus_case_exprs[colnames(hippocampus_case_exprs)%in%rownames(female_samples)]
+Medial_Temporal_Gyrus_case_exprs_F<-Medial_Temporal_Gyrus_case_exprs[colnames(Medial_Temporal_Gyrus_case_exprs)%in%rownames(female_samples)]
+Posterior_Singulate_case_exprs_F<-Posterior_Singulate_case_exprs[colnames(Posterior_Singulate_case_exprs)%in%rownames(female_samples)]
+Primary_Visual_Cortex_case_exprs_F<-Primary_Visual_Cortex_case_exprs[colnames(Primary_Visual_Cortex_case_exprs)%in%rownames(female_samples)]
+Superior_Frontal_Gyrus_case_exprs_F<-Superior_Frontal_Gyrus_case_exprs[colnames(Superior_Frontal_Gyrus_case_exprs)%in%rownames(female_samples)]
+
+Entorhinal_Cortex_control_exprs_M<-Entorhinal_Cortex_control_exprs[colnames(Entorhinal_Cortex_control_exprs)%in%rownames(male_samples)]
+hippocampus_control_exprs_M<-hippocampus_control_exprs[colnames(hippocampus_control_exprs)%in%rownames(male_samples)]
+Medial_Temporal_Gyrus_control_exprs_M<-Medial_Temporal_Gyrus_control_exprs[colnames(Medial_Temporal_Gyrus_control_exprs)%in%rownames(male_samples)]
+Posterior_Singulate_control_exprs_M<-Posterior_Singulate_control_exprs[colnames(Posterior_Singulate_control_exprs)%in%rownames(male_samples)]
+Primary_Visual_Cortex_control_exprs_M<-Primary_Visual_Cortex_control_exprs[colnames(Primary_Visual_Cortex_control_exprs)%in%rownames(male_samples)]
+Superior_Frontal_Gyrus_control_exprs_M<-Superior_Frontal_Gyrus_control_exprs[colnames(Superior_Frontal_Gyrus_control_exprs)%in%rownames(male_samples)]
+
+Entorhinal_Cortex_case_exprs_M<-Entorhinal_Cortex_case_exprs[colnames(Entorhinal_Cortex_case_exprs)%in%rownames(male_samples)]
+hippocampus_case_exprs_M<-hippocampus_case_exprs[colnames(hippocampus_case_exprs)%in%rownames(male_samples)]
+Medial_Temporal_Gyrus_case_exprs_M<-Medial_Temporal_Gyrus_case_exprs[colnames(Medial_Temporal_Gyrus_case_exprs)%in%rownames(male_samples)]
+Posterior_Singulate_case_exprs_M<-Posterior_Singulate_case_exprs[colnames(Posterior_Singulate_case_exprs)%in%rownames(male_samples)]
+Primary_Visual_Cortex_case_exprs_M<-Primary_Visual_Cortex_case_exprs[colnames(Primary_Visual_Cortex_case_exprs)%in%rownames(male_samples)]
+Superior_Frontal_Gyrus_case_exprs_M<-Superior_Frontal_Gyrus_case_exprs[colnames(Superior_Frontal_Gyrus_case_exprs)%in%rownames(male_samples)]
+
 # calculate 90th percentile for each sample in each group
 
 extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_threshold) {
@@ -285,91 +361,113 @@ extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_th
   colnames(dataset_count)<-"count"
   # subset good probes
   good_probes<-rownames(subset(dataset_count, dataset_count$count >= (number_of_samples*sample_threshold)))
+  #print threshold used
+  print(as.data.frame(sample_quantiles))
+  boxplot(as.data.frame(sample_quantiles))
   # return good probes
   return(good_probes)
 }
 
-#
+#apply
 
-# apply function - case
+Entorhinal_Cortex_case_expressed_probes_list_F<-extract_good_probe_list(Entorhinal_Cortex_case_exprs_F, 0.9, 0.8)
+length(Entorhinal_Cortex_case_expressed_probes_list_F)
 
-Entorhinal_Cortex_case_expressed_probes_list<-extract_good_probe_list(Entorhinal_Cortex_case_exprs, 0.9, 0.8)
-head(Entorhinal_Cortex_case_expressed_probes_list)
-length(Entorhinal_Cortex_case_expressed_probes_list)
-nrow(Entorhinal_Cortex_case_exprs)
+hippocampus_case_expressed_probes_list_F<-extract_good_probe_list(hippocampus_case_exprs_F, 0.9, 0.8)
+length(hippocampus_case_expressed_probes_list_F)
 
-hippocampus_case_expressed_probes_list<-extract_good_probe_list(hippocampus_case_exprs, 0.9, 0.8)
-head(hippocampus_case_expressed_probes_list)
-length(hippocampus_case_expressed_probes_list)
-nrow(hippocampus_case_exprs)
+Medial_Temporal_Gyrus_case_expressed_probes_list_F<-extract_good_probe_list(Medial_Temporal_Gyrus_case_exprs_F, 0.9, 0.8)
+length(Medial_Temporal_Gyrus_case_expressed_probes_list_F)
 
-Medial_Temporal_Gyrus_case_expressed_probes_list<-extract_good_probe_list(Medial_Temporal_Gyrus_case_exprs, 0.9, 0.8)
-head(Medial_Temporal_Gyrus_case_expressed_probes_list)
-length(Medial_Temporal_Gyrus_case_expressed_probes_list)
-nrow(Medial_Temporal_Gyrus_case_exprs)
+Posterior_Singulate_case_expressed_probes_list_F<-extract_good_probe_list(Posterior_Singulate_case_exprs_F, 0.9, 0.8)
+length(Posterior_Singulate_case_expressed_probes_list_F)
 
-Posterior_Singulate_case_expressed_probes_list<-extract_good_probe_list(Posterior_Singulate_case_exprs, 0.9, 0.8)
-head(Posterior_Singulate_case_expressed_probes_list)
-length(Posterior_Singulate_case_expressed_probes_list)
-nrow(Posterior_Singulate_case_exprs)
+Primary_Visual_Cortex_case_expressed_probes_list_F<-extract_good_probe_list(Primary_Visual_Cortex_case_exprs_F, 0.9, 0.8)
+length(Primary_Visual_Cortex_case_expressed_probes_list_F)
 
-Primary_Visual_Cortex_case_expressed_probes_list<-extract_good_probe_list(Primary_Visual_Cortex_case_exprs, 0.9, 0.8)
-head(Primary_Visual_Cortex_case_expressed_probes_list)
-length(Primary_Visual_Cortex_case_expressed_probes_list)
-nrow(Primary_Visual_Cortex_case_exprs)
+Superior_Frontal_Gyrus_case_expressed_probes_list_F<-extract_good_probe_list(Superior_Frontal_Gyrus_case_exprs_F, 0.9, 0.8)
+length(Superior_Frontal_Gyrus_case_expressed_probes_list_F)
 
-Superior_Frontal_Gyrus_case_expressed_probes_list<-extract_good_probe_list(Superior_Frontal_Gyrus_case_exprs, 0.9, 0.8)
-head(Superior_Frontal_Gyrus_case_expressed_probes_list)
-length(Superior_Frontal_Gyrus_case_expressed_probes_list)
-nrow(Superior_Frontal_Gyrus_case_exprs)
+Entorhinal_Cortex_control_expressed_probes_list_F<-extract_good_probe_list(Entorhinal_Cortex_control_exprs_F, 0.9, 0.8)
+length(Entorhinal_Cortex_control_expressed_probes_list_F)
 
-#apply function to control
+hippocampus_control_expressed_probes_list_F<-extract_good_probe_list(hippocampus_control_exprs_F, 0.9, 0.8)
+length(hippocampus_control_expressed_probes_list_F)
 
-Entorhinal_Cortex_control_expressed_probes_list<-extract_good_probe_list(Entorhinal_Cortex_control_exprs, 0.9, 0.8)
-head(Entorhinal_Cortex_control_expressed_probes_list)
-length(Entorhinal_Cortex_control_expressed_probes_list)
-nrow(Entorhinal_Cortex_control_exprs)
+Medial_Temporal_Gyrus_control_expressed_probes_list_F<-extract_good_probe_list(Medial_Temporal_Gyrus_control_exprs_F, 0.9, 0.8)
+length(Medial_Temporal_Gyrus_control_expressed_probes_list_F)
 
-hippocampus_control_expressed_probes_list<-extract_good_probe_list(hippocampus_control_exprs, 0.9, 0.8)
-head(hippocampus_control_expressed_probes_list)
-length(hippocampus_control_expressed_probes_list)
-nrow(hippocampus_control_exprs)
+Posterior_Singulate_control_expressed_probes_list_F<-extract_good_probe_list(Posterior_Singulate_control_exprs_F, 0.9, 0.8)
+length(Posterior_Singulate_control_expressed_probes_list_F)
 
-Medial_Temporal_Gyrus_control_expressed_probes_list<-extract_good_probe_list(Medial_Temporal_Gyrus_control_exprs, 0.9, 0.8)
-head(Medial_Temporal_Gyrus_control_expressed_probes_list)
-length(Medial_Temporal_Gyrus_control_expressed_probes_list)
-nrow(Medial_Temporal_Gyrus_control_exprs)
+Primary_Visual_Cortex_control_expressed_probes_list_F<-extract_good_probe_list(Primary_Visual_Cortex_control_exprs_F, 0.9, 0.8)
+length(Primary_Visual_Cortex_control_expressed_probes_list_F)
 
-Posterior_Singulate_control_expressed_probes_list<-extract_good_probe_list(Posterior_Singulate_control_exprs, 0.9, 0.8)
-head(Posterior_Singulate_control_expressed_probes_list)
-length(Posterior_Singulate_control_expressed_probes_list)
-nrow(Posterior_Singulate_control_exprs)
+Superior_Frontal_Gyrus_control_expressed_probes_list_F<-extract_good_probe_list(Superior_Frontal_Gyrus_control_exprs_F, 0.9, 0.8)
+length(Superior_Frontal_Gyrus_control_expressed_probes_list_F)
 
-Primary_Visual_Cortex_control_expressed_probes_list<-extract_good_probe_list(Primary_Visual_Cortex_control_exprs, 0.9, 0.8)
-head(Primary_Visual_Cortex_control_expressed_probes_list)
-length(Primary_Visual_Cortex_control_expressed_probes_list)
-nrow(Primary_Visual_Cortex_control_exprs)
+Entorhinal_Cortex_case_expressed_probes_list_M<-extract_good_probe_list(Entorhinal_Cortex_case_exprs_M, 0.9, 0.8)
+length(Entorhinal_Cortex_case_expressed_probes_list_M)
 
-Superior_Frontal_Gyrus_control_expressed_probes_list<-extract_good_probe_list(Superior_Frontal_Gyrus_control_exprs, 0.9, 0.8)
-head(Superior_Frontal_Gyrus_control_expressed_probes_list)
-length(Superior_Frontal_Gyrus_control_expressed_probes_list)
-nrow(Superior_Frontal_Gyrus_control_exprs)
+hippocampus_case_expressed_probes_list_M<-extract_good_probe_list(hippocampus_case_exprs_M, 0.9, 0.8)
+length(hippocampus_case_expressed_probes_list_M)
+
+Medial_Temporal_Gyrus_case_expressed_probes_list_M<-extract_good_probe_list(Medial_Temporal_Gyrus_case_exprs_M, 0.9, 0.8)
+length(Medial_Temporal_Gyrus_case_expressed_probes_list_M)
+
+Posterior_Singulate_case_expressed_probes_list_M<-extract_good_probe_list(Posterior_Singulate_case_exprs_M, 0.9, 0.8)
+length(Posterior_Singulate_case_expressed_probes_list_M)
+
+Primary_Visual_Cortex_case_expressed_probes_list_M<-extract_good_probe_list(Primary_Visual_Cortex_case_exprs_M, 0.9, 0.8)
+length(Primary_Visual_Cortex_case_expressed_probes_list_M)
+
+Superior_Frontal_Gyrus_case_expressed_probes_list_M<-extract_good_probe_list(Superior_Frontal_Gyrus_case_exprs_M, 0.9, 0.8)
+length(Superior_Frontal_Gyrus_case_expressed_probes_list_M)
+
+Entorhinal_Cortex_control_expressed_probes_list_M<-extract_good_probe_list(Entorhinal_Cortex_control_exprs_M, 0.9, 0.8)
+length(Entorhinal_Cortex_control_expressed_probes_list_M)
+
+hippocampus_control_expressed_probes_list_M<-extract_good_probe_list(hippocampus_control_exprs_M, 0.9, 0.8)
+length(hippocampus_control_expressed_probes_list_M)
+
+Medial_Temporal_Gyrus_control_expressed_probes_list_M<-extract_good_probe_list(Medial_Temporal_Gyrus_control_exprs_M, 0.9, 0.8)
+length(Medial_Temporal_Gyrus_control_expressed_probes_list_M)
+
+Posterior_Singulate_control_expressed_probes_list_M<-extract_good_probe_list(Posterior_Singulate_control_exprs_M, 0.9, 0.8)
+length(Posterior_Singulate_control_expressed_probes_list_M)
+
+Primary_Visual_Cortex_control_expressed_probes_list_M<-extract_good_probe_list(Primary_Visual_Cortex_control_exprs_M, 0.9, 0.8)
+length(Primary_Visual_Cortex_control_expressed_probes_list_M)
+
+Superior_Frontal_Gyrus_control_expressed_probes_list_M<-extract_good_probe_list(Superior_Frontal_Gyrus_control_exprs_M, 0.9, 0.8)
+length(Superior_Frontal_Gyrus_control_expressed_probes_list_M)
 
 # merge list of good probes from both case + control + and all brain regions, sort and keep unique values
 
-good_probe_list<-unique(sort(c(Entorhinal_Cortex_case_expressed_probes_list,
-                               hippocampus_case_expressed_probes_list,
-                               Medial_Temporal_Gyrus_case_expressed_probes_list,
-                               Posterior_Singulate_case_expressed_probes_list,
-                               Primary_Visual_Cortex_case_expressed_probes_list,
-                               Superior_Frontal_Gyrus_case_expressed_probes_list,
-                               Entorhinal_Cortex_control_expressed_probes_list,
-                               hippocampus_control_expressed_probes_list,
-                               Medial_Temporal_Gyrus_control_expressed_probes_list,
-                               Posterior_Singulate_control_expressed_probes_list,
-                               Primary_Visual_Cortex_control_expressed_probes_list,
-                               Superior_Frontal_Gyrus_control_expressed_probes_list)))
-
+good_probe_list<-unique(sort(c(Entorhinal_Cortex_control_expressed_probes_list_F,
+                               hippocampus_control_expressed_probes_list_F,
+                               Medial_Temporal_Gyrus_control_expressed_probes_list_F,
+                               Posterior_Singulate_control_expressed_probes_list_F,
+                               Primary_Visual_Cortex_control_expressed_probes_list_F,
+                               Superior_Frontal_Gyrus_control_expressed_probes_list_F,
+                               Entorhinal_Cortex_case_expressed_probes_list_F,
+                               hippocampus_case_expressed_probes_list_F,
+                               Medial_Temporal_Gyrus_case_expressed_probes_list_F,
+                               Posterior_Singulate_case_expressed_probes_list_F,
+                               Primary_Visual_Cortex_case_expressed_probes_list_F,
+                               Superior_Frontal_Gyrus_case_expressed_probes_list_F,
+                               Entorhinal_Cortex_control_expressed_probes_list_M,
+                               hippocampus_control_expressed_probes_list_M,
+                               Medial_Temporal_Gyrus_control_expressed_probes_list_M,
+                               Posterior_Singulate_control_expressed_probes_list_M,
+                               Primary_Visual_Cortex_control_expressed_probes_list_M,
+                               Superior_Frontal_Gyrus_control_expressed_probes_list_M,
+                               Entorhinal_Cortex_case_expressed_probes_list_M,
+                               hippocampus_case_expressed_probes_list_M,
+                               Medial_Temporal_Gyrus_case_expressed_probes_list_M,
+                               Posterior_Singulate_case_expressed_probes_list_M,
+                               Primary_Visual_Cortex_case_expressed_probes_list_M,
+                               Superior_Frontal_Gyrus_case_expressed_probes_list_M)))
 length(good_probe_list)
 
 
@@ -402,7 +500,7 @@ Primary_Visual_Cortex_control_exprs_good_probes<-Primary_Visual_Cortex_control_e
 Superior_Frontal_Gyrus_control_exprs_good_probes<-Superior_Frontal_Gyrus_control_exprs[rownames(Superior_Frontal_Gyrus_control_exprs)%in%good_probe_list,]
 
 
-# check dataframe - all should be 6658
+# check dataframe - all should be 7729
 
 head(Entorhinal_Cortex_case_exprs_good_probes)[1:5]
 dim(Entorhinal_Cortex_case_exprs_good_probes)
@@ -447,6 +545,136 @@ dim(brain_data_normalised)
 brain_data_normalised_exprs_good_probes<-brain_data_normalised_as_data_frame[rownames(brain_data_normalised_as_data_frame)%in%good_probe_list,]
 dim(brain_data_normalised_exprs_good_probes)
 head(brain_data_normalised_exprs_good_probes)[1:5]
+
+##### GENDER SPECIFIC PROBE PLOTS #####
+
+# using dataframe before probe removal
+
+# get gene symbol list for chip
+Gene_symbols_probes <- mappedkeys(hgu133plus2SYMBOL)
+
+# Convert to a list
+Gene_symbols <- as.data.frame(hgu133plus2SYMBOL[Gene_symbols_probes])
+
+head(Gene_symbols)
+dim(Gene_symbols)
+
+#xist gene - 
+XIST_probe_ID<-subset(Gene_symbols, symbol=="XIST")
+XIST_probe_ID
+
+PRKY_probe_ID<-subset(Gene_symbols, symbol=="PRKY")
+PRKY_probe_ID
+
+NLGN4Y_probe_ID<-subset(Gene_symbols, symbol=="NLGN4Y")
+NLGN4Y_probe_ID
+
+TMSB4Y_probe_ID<-subset(Gene_symbols, symbol=="TMSB4Y")
+TMSB4Y_probe_ID
+
+USP9Y_probe_ID<-subset(Gene_symbols, symbol=="USP9Y")
+USP9Y_probe_ID
+
+UTY_probe_ID<-subset(Gene_symbols, symbol=="UTY")
+UTY_probe_ID
+
+
+# merge all genes to check
+
+gene_list<-rbind(XIST_probe_ID,
+                 PRKY_probe_ID,
+                 NLGN4Y_probe_ID,
+                 TMSB4Y_probe_ID,
+                 USP9Y_probe_ID,
+                 UTY_probe_ID)
+
+#create function to plot
+plot_gender_specific_genes<-function(Expression_table, gender_info, genes_to_extract, threshold, boxplot_title){
+  #extract gene of interest
+  Expression_table_gene_check<-as.data.frame(t(Expression_table[genes_to_extract[,1],]))
+  #check all probes extracted
+  print(c("all probes extracted:", dim(Expression_table_gene_check)[2]==dim(genes_to_extract)[1]))
+  # change colnames TO GENE SYMBOL using genes to extract file
+  for (x in 1:dim(Expression_table_gene_check)[2]){
+    colnames(Expression_table_gene_check)[x]<-gene_list[genes_to_extract$probe_id==colnames(Expression_table_gene_check)[x],2]
+  }
+  # add in gender information
+  Expression_table_gene_check_gender<-merge(gender_info, Expression_table_gene_check, by="row.names")
+  rownames(Expression_table_gene_check_gender)<-Expression_table_gene_check_gender$Row.names
+  Expression_table_gene_check_gender$Row.names<-NULL
+  #melt dataframe for plot
+  Expression_table_gene_check_gender_melt<-melt(Expression_table_gene_check_gender, by=Gender)
+  # calculate user defined percentie threshold
+  sample_quantiles<-apply(Expression_table, 2, quantile, probs=threshold)
+  # mean of used defined threshold across samples
+  mean_threshold=mean(sample_quantiles)
+  #plot
+  qplot(variable, value, colour=get(colnames(gender_info)), data = Expression_table_gene_check_gender_melt, geom = c("boxplot", "jitter")) + 
+    geom_hline(yintercept = mean_threshold) +
+    ggtitle(boxplot_title) +
+    labs(x="Gene",y="Expression", colour = colnames(gender_info)) 
+}
+
+# plot
+
+setwd(work_dir)
+
+dir.create(paste(work_dir,"Gender_specific_gene_plots", sep="/"))
+Gender_plots_dir=paste(work_dir,"Gender_specific_gene_plots", sep="/")
+
+setwd(Gender_plots_dir)
+
+pdf("Gender_specific_gene_plot_and_detectable_cut_off_threshold_used.pdf")
+plot_gender_specific_genes(Entorhinal_Cortex_control_exprs, gender_comparison[1], gene_list, 0.9, "Entorhinal_Cortex_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(hippocampus_control_exprs, gender_comparison[1], gene_list, 0.9, "hippocampus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Medial_Temporal_Gyrus_control_exprs, gender_comparison[1], gene_list, 0.9, "Medial_Temporal_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Posterior_Singulate_control_exprs, gender_comparison[1], gene_list, 0.9, "Posterior_Singulate_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Primary_Visual_Cortex_control_exprs, gender_comparison[1], gene_list, 0.9, "Primary_Visual_Cortex_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Frontal_Gyrus_control_exprs, gender_comparison[1], gene_list, 0.9, "Superior_Frontal_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Entorhinal_Cortex_case_exprs, gender_comparison[1], gene_list, 0.9, "Entorhinal_Cortex_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(hippocampus_case_exprs, gender_comparison[1], gene_list, 0.9, "hippocampus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Medial_Temporal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Medial_Temporal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Posterior_Singulate_case_exprs, gender_comparison[1], gene_list, 0.9, "Posterior_Singulate_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Primary_Visual_Cortex_case_exprs, gender_comparison[1], gene_list, 0.9, "Primary_Visual_Cortex_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Frontal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Superior_Frontal_Gyrus_case_exprs_gender_specific_genes")
+dev.off()
+
+# plot gender missmatches
+
+cbind(Gender_missmatch, Diagnosis[rownames(Gender_missmatch),])
+Gender_missmatch
+
+gender_missmatch_tissue_lookup<-phenotype_data[13]
+
+gender_missmatch_tissue_lookup<-merge(Gender_missmatch, gender_missmatch_tissue_lookup, by="row.names")
+rownames(gender_missmatch_tissue_lookup)<-gender_missmatch_tissue_lookup$Row.names
+gender_missmatch_tissue_lookup$Row.names<-NULL
+
+gender_missmatch_tissue_lookup<-merge(gender_missmatch_tissue_lookup, Diagnosis, by="row.names")
+rownames(gender_missmatch_tissue_lookup)<-gender_missmatch_tissue_lookup$Row.names
+gender_missmatch_tissue_lookup$Row.names<-NULL
+
+head(gender_missmatch_tissue_lookup)
+table(gender_missmatch_tissue_lookup[c(3,4)])
+
+pdf("Gender_missmatch.pdf")
+plot_gender_specific_genes(Entorhinal_Cortex_control_exprs, gender_comparison[1], gene_list, 0.9, "Entorhinal_Cortex_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Entorhinal_Cortex_control_exprs, gender_comparison[2], gene_list, 0.9, "Entorhinal_Cortex_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Frontal_Gyrus_control_exprs, gender_comparison[1], gene_list, 0.9, "Superior_Frontal_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Frontal_Gyrus_control_exprs, gender_comparison[2], gene_list, 0.9, "Superior_Frontal_Gyrus_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Frontal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Superior_Frontal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Superior_Frontal_Gyrus_case_exprs, gender_comparison[2], gene_list, 0.9, "Superior_Frontal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(hippocampus_case_exprs, gender_comparison[1], gene_list, 0.9, "hippocampus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(hippocampus_case_exprs, gender_comparison[2], gene_list, 0.9, "hippocampus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Medial_Temporal_Gyrus_case_exprs, gender_comparison[1], gene_list, 0.9, "Medial_Temporal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Medial_Temporal_Gyrus_case_exprs, gender_comparison[2], gene_list, 0.9, "Medial_Temporal_Gyrus_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Primary_Visual_Cortex_case_exprs, gender_comparison[1], gene_list, 0.9, "Primary_Visual_Cortex_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Primary_Visual_Cortex_case_exprs, gender_comparison[2], gene_list, 0.9, "Primary_Visual_Cortex_case_exprs_gender_specific_genes")
+plot_gender_specific_genes(Posterior_Singulate_control_exprs, gender_comparison[1], gene_list, 0.9, "Posterior_Singulate_control_exprs_gender_specific_genes")
+plot_gender_specific_genes(Posterior_Singulate_control_exprs, gender_comparison[2], gene_list, 0.9, "Posterior_Singulate_control_exprs_gender_specific_genes")
+dev.off()
+
+setwd(work_dir)
 
 ##### PCA ####
 
@@ -582,16 +810,42 @@ Superior_Frontal_Gyrus_good_probes$Row.names<-NULL
 dim(Superior_Frontal_Gyrus_good_probes)
 head(Superior_Frontal_Gyrus_good_probes)[1:5]
 
+# add gender in 
+
+Entorhinal_Cortex_good_probes<-merge(gender_comparison[1], Entorhinal_Cortex_good_probes, by="row.names")
+rownames(Entorhinal_Cortex_good_probes)<-Entorhinal_Cortex_good_probes$Row.names
+Entorhinal_Cortex_good_probes$Row.names<-NULL
+
+Hippocampus_good_probes<-merge(gender_comparison[1], Hippocampus_good_probes, by="row.names")
+rownames(Hippocampus_good_probes)<-Hippocampus_good_probes$Row.names
+Hippocampus_good_probes$Row.names<-NULL
+
+Medial_Temporal_Gyrus_good_probes<-merge(gender_comparison[1], Medial_Temporal_Gyrus_good_probes, by="row.names")
+rownames(Medial_Temporal_Gyrus_good_probes)<-Medial_Temporal_Gyrus_good_probes$Row.names
+Medial_Temporal_Gyrus_good_probes$Row.names<-NULL
+
+Posterior_Singulate_good_probes<-merge(gender_comparison[1], Posterior_Singulate_good_probes, by="row.names")
+rownames(Posterior_Singulate_good_probes)<-Posterior_Singulate_good_probes$Row.names
+Posterior_Singulate_good_probes$Row.names<-NULL
+
+Primary_Visual_Cortex_good_probes<-merge(gender_comparison[1], Primary_Visual_Cortex_good_probes, by="row.names")
+rownames(Primary_Visual_Cortex_good_probes)<-Primary_Visual_Cortex_good_probes$Row.names
+Primary_Visual_Cortex_good_probes$Row.names<-NULL
+
+Superior_Frontal_Gyrus_good_probes<-merge(gender_comparison[1], Superior_Frontal_Gyrus_good_probes, by="row.names")
+rownames(Superior_Frontal_Gyrus_good_probes)<-Superior_Frontal_Gyrus_good_probes$Row.names
+Superior_Frontal_Gyrus_good_probes$Row.names<-NULL
+
 # create sva function
 
 check_SV_in_data<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_pheno<-sorted_by_diagnosis[1]
-  dataset_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
+  dataset_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_pheno)
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_pheno)
   # check number of SV in data
   num.sv(dataset_exprs, mod, method="leek")
 }
@@ -611,10 +865,10 @@ adjust_for_sva<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_sva_pheno<-sorted_by_diagnosis[1]
-  dataset_sva_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
+  dataset_sva_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_sva_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_sva_pheno)
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_sva_pheno)
   mod0 = model.matrix(~1, data=dataset_sva_pheno)
   # number of SV
   num.sv(dataset_sva_exprs, mod, method="leek")
@@ -651,6 +905,14 @@ Posterior_Singulate_good_probes_sva_adjusted<-adjust_for_sva(Posterior_Singulate
 Primary_Visual_Cortex_good_probes_sva_adjusted<-adjust_for_sva(Primary_Visual_Cortex_good_probes)
 Superior_Frontal_Gyrus_good_probes_sva_adjusted<-adjust_for_sva(Superior_Frontal_Gyrus_good_probes)
 
+# exclude gender
+Entorhinal_Cortex_good_probes_sva_adjusted$Clinical_Gender<-NULL
+Hippocampus_good_probes_sva_adjusted$Clinical_Gender<-NULL
+Medial_Temporal_Gyrus_good_probes_sva_adjusted$Clinical_Gender<-NULL
+Posterior_Singulate_good_probes_sva_adjusted$Clinical_Gender<-NULL
+Primary_Visual_Cortex_good_probes_sva_adjusted$Clinical_Gender<-NULL
+Superior_Frontal_Gyrus_good_probes_sva_adjusted$Clinical_Gender<-NULL
+
 # separate case and control
 
 Entorhinal_Cortex_good_probes_sva_adjusted_case<-Entorhinal_Cortex_good_probes_sva_adjusted[Entorhinal_Cortex_good_probes_sva_adjusted$Diagnosis=="AD",]
@@ -674,106 +936,12 @@ dim(Posterior_Singulate_good_probes_sva_adjusted_case)
 dim(Primary_Visual_Cortex_good_probes_sva_adjusted_case)
 dim(Superior_Frontal_Gyrus_good_probes_sva_adjusted_case)
 
-
 dim(Entorhinal_Cortex_good_probes_sva_adjusted_control)
 dim(Hippocampus_good_probes_sva_adjusted_control)
 dim(Medial_Temporal_Gyrus_good_probes_sva_adjusted_control)
 dim(Posterior_Singulate_good_probes_sva_adjusted_control)
 dim(Primary_Visual_Cortex_good_probes_sva_adjusted_control)
 dim(Superior_Frontal_Gyrus_good_probes_sva_adjusted_control)
-
-##### SAMPLE NETWORK PLOT ######
-
-# sample plot function - taken from steve expression pipeline
-
-sampleNetwork_plot <- function(dataset) {
-  datExprs<-t(dataset[2:dim(dataset)[2]])
-  diagnosis<-dataset[1]
-  gp_col <- "group"
-  cat(" setting up data for qc plots","\r","\n")
-  ## expression matrix and IAC
-  cat(" expression matrix and IAC","\r","\n")
-  IAC <- cor(datExprs)
-  IAC_d <- 1-IAC
-  samle_names <- colnames(datExprs)
-  IAC=cor(datExprs, method="p",use="p")
-  diag(IAC)=0
-  A.IAC=((1+IAC)/2)^2 ## ADJACENCY MATRIX
-  cat(" fundamentalNetworkConcepts","\r","\n")
-  FNC=fundamentalNetworkConcepts(A.IAC) ## WGCNA
-  K2=FNC$ScaledConnectivity
-  Z.K=(K2-mean(K2))/sd(K2)
-  Z.C=(FNC$ClusterCoef-mean(FNC$ClusterCoef))/sd(FNC$ClusterCoef)
-  rho <- signif(cor.test(Z.K,Z.C,method="s")$estimate,2)
-  rho_pvalue <- signif(cor.test(Z.K,Z.C,method="s")$p.value,2)
-  # set colours
-  cat(" colorvec [",paste(gp_col),"]","\r","\n")
-  if(gp_col=="chip") { colorvec <- labels2colors(as.character(pData(eset)$Sentrix.Barcode)) }
-  if(gp_col=="group") { colorvec <- labels2colors(diagnosis[1]) }
-  mean_IAC <- mean(IAC[upper.tri(IAC)])
-  ## samplenetwork
-  local(
-    {colLab <<- function(n,treeorder) {
-      if(is.leaf(n)) {
-        a <- attributes(n)
-        i <<- i+1
-        attr(n, "nodePar") <- c(a$nodePar, list(lab.col = colorvec[treeorder][i], lab.font = i%%3))
-      }
-      n
-    }
-    i <- 0
-    })
-  cat(" begin SampleNetwork plots","\r","\n")
-  group_colours<-unique(cbind(colorvec, diagnosis))
-  ## Cluster for pics
-  cluster1 <- hclust(as.dist(1-A.IAC),method="average")
-  cluster1order <- cluster1$order
-  cluster2 <- as.dendrogram(cluster1,hang=0.1)
-  cluster3 <- dendrapply(cluster2,colLab,cluster1order)
-  ## PLOTS
-  ## cluster IAC
-  par(mfrow=c(2,2))
-  par(mar=c(5,6,4,2))
-  plot(cluster3,nodePar=list(lab.cex=1,pch=NA),
-       main=paste("Mean ISA = ",signif(mean(A.IAC[upper.tri(A.IAC)]),3),sep=""),
-       xlab="",ylab="1 - ISA",sub="",cex.main=1.8,cex.lab=1.4)
-  mtext(paste("distance: 1 - ISA ",sep=""),cex=0.8,line=0.2)
-  ## Connectivity
-  par(mar=c(5,5,4,2))
-  plot(Z.K,main="Connectivity", ylab="Z.K",xaxt="n",xlab="Sample",type="n",cex.main=1.8,cex.lab=1.4)
-  text(Z.K,labels=samle_names,cex=0.8,col=colorvec)
-  abline(h=-2)
-  abline(h=-3)
-  par(mar=c(5,5,4,2))
-  plot(Z.K,Z.C,main="Connectivity vs ClusterCoef",xlab="Z.K",ylab="Z.C",col=colorvec ,cex.main=1.8,cex.lab=1.4)
-  abline(lm(Z.C~Z.K),col="black",lwd=2)
-  mtext(paste("rho = ",signif(cor.test(Z.K,Z.C,method="s")$estimate,2)," p = ",signif(cor.test(Z.K,Z.C,method="s")$p.value,2),sep=""),cex=0.8,line=0.2)
-  abline(v=-2,lty=2,col="grey")
-  abline(h=-2,lty=2,col="grey")
-  ##blank plot for legend
-  par(mar=c(5,5,4,2))
-  plot(1, type="n", axes=F, xlab="", ylab="")
-  legend(0.6, 1.4, unique(diagnosis[,1]), fill=unique(colorvec))
-} #taken from steves expression pipeline
-
-# create functio to ID outliers
-
-names_of_outliers<-function(dataset, threshold){
-  datExprs<-t(dataset[2:dim(dataset)[2]])
-  IAC = cor(datExprs, method = "p", use = "p")
-  diag(IAC) = 0
-  A.IAC = ((1 + IAC)/2)^2  ## ADJACENCY MATRIX
-  # fundamentalNetworkConcepts
-  FNC = fundamentalNetworkConcepts(A.IAC)  ## WGCNA
-  K2 = FNC$ScaledConnectivity
-  Z.K = round((K2 - mean(K2))/sd(K2), 3)
-  Z.K_outliers <- Z.K < threshold
-  Z.K_outliers <- names(Z.K_outliers[Z.K_outliers == TRUE])
-  n_outliers <- length(Z.K_outliers)
-  return(Z.K_outliers)
-}
-
-# create function to run network analysis on each expression dataset, plot and remove bad samples 
 
 ##### SAMPLE NETWORK PLOT ######
 
@@ -1148,11 +1316,78 @@ head(phenotype_data)
 
 rownames(Diagnosis)==rownames(brain_region)
 
-Diagnosis_and_tissue_type_lookup<-cbind(brain_region, Diagnosis)
+phenotype_to_attach<-cbind(brain_region, Diagnosis)
 
-colnames(Diagnosis_and_tissue_type_lookup)<-c("Tissue", "Diagnosis")
+colnames(phenotype_to_attach)<-c("Tissue", "Diagnosis")
 
-brain_data_QCd_entrez_id_unique_pheno<-merge(Diagnosis_and_tissue_type_lookup, brain_data_QCd_entrez_id_unique, by="row.names")
+head(phenotype_to_attach)
+
+# attach age
+phenotype_to_attach$Age<-phenotype_data[,6]
+
+# standardise Age columns
+
+table(phenotype_to_attach$Age, exclude=NULL)
+
+phenotype_to_attach$Age<-as.numeric(substr(phenotype_to_attach$Age, 1, 3))
+
+table(phenotype_to_attach$Age, exclude=NULL)
+
+# add Gender
+
+phenotype_to_attach<-merge(phenotype_to_attach, gender_comparison, by="row.names")
+rownames(phenotype_to_attach)<-phenotype_to_attach$Row.names
+phenotype_to_attach$Row.names<-NULL
+head(phenotype_to_attach)
+
+# add additional columns as unknown - BRAAK, MMSE, APOE
+
+phenotype_to_attach$MMSE<-"Unknown"
+phenotype_to_attach$BRAAK<-"Unknown"
+phenotype_to_attach$APOE<-"Unknown"
+
+# check table additional pheno table - should be 5 columns
+
+phenotype_to_attach
+dim(phenotype_to_attach)
+
+# phenotype_to_attach - hippocampus CA1 used - attained form cited paper
+
+phenotype_to_attach[phenotype_to_attach$Tissue=="Entorhinal Cortex",1]<-"Entorhinal_Cortex"
+phenotype_to_attach[phenotype_to_attach$Tissue=="hippocampus",1]<-"Hippocampus_CA1"
+phenotype_to_attach[phenotype_to_attach$Tissue=="Medial Temporal Gyrus",1]<-"Medial_Temporal_Gyrus"
+phenotype_to_attach[phenotype_to_attach$Tissue=="Posterior Singulate",1]<-"Posterior_Singulate"
+phenotype_to_attach[phenotype_to_attach$Tissue=="Primary Visual Cortex",1]<-"Primary_Visual_Cortex"
+phenotype_to_attach[phenotype_to_attach$Tissue=="Superior Frontal Gyrus",1]<-"Superior_Frontal_Gyrus"
+
+# manually adjust BRAAK column to V-VI for ad patients - from cited paper
+
+phenotype_to_attach[phenotype_to_attach$Diagnosis=="AD", 7]<-"5-6"
+phenotype_to_attach[phenotype_to_attach$Diagnosis=="Control", 7]<-"1-2"
+
+head(phenotype_to_attach)[1:8]
+tail(phenotype_to_attach)[1:8]
+
+# Diagnosis Subcat - all severe ad
+
+phenotype_to_attach$Diagnosis_sub_cat<-phenotype_to_attach$Diagnosis
+phenotype_to_attach[phenotype_to_attach$Diagnosis=="AD" & phenotype_to_attach$BRAAK=="5-6" , 9]<-"Severe_AD"
+
+# convetr NA to Uknown
+phenotype_to_attach[is.na(phenotype_to_attach)]<-"Unknown"
+
+head(phenotype_to_attach)
+
+# order pheno information
+
+phenotype_to_attach<-phenotype_to_attach[,order(names(phenotype_to_attach), decreasing = T)]
+
+# should be 9 colnames - Diagnosis", "Tissue", "Age", "Clinical_Gender", "Predicted_Gender", "MMSE", "BRAAK", "APOE", "Diagnosis_sub_cat"
+colnames(phenotype_to_attach)
+
+# add phenotype to expression
+
+brain_data_QCd_entrez_id_unique_pheno<-merge(phenotype_to_attach, brain_data_QCd_entrez_id_unique, by="row.names")
 
 head(brain_data_QCd_entrez_id_unique_pheno)[1:5]
 
@@ -1163,6 +1398,7 @@ brain_data_QCd_entrez_id_unique_pheno$Row.names<-NULL
 head(brain_data_QCd_entrez_id_unique_pheno)[1:5]
 
 dim(brain_data_QCd_entrez_id_unique_pheno)
+dim(brain_data_QCd_entrez_id_unique)
 
 ##### SAVE EXPRESSION DATAFRAME #####
 
@@ -1175,6 +1411,28 @@ write.table(brain_data_QCd_entrez_id_unique_pheno, file="E-GEOD-5281_pre-process
 setwd(clean_data_dir)
 
 write.table(phenotype_data, file="E-GEOD-5281_phenotype_data2.txt", sep="\t")
+
+##### WRITE LIST OF CONTROL GENES EXPRESSED #####
+
+setwd("/media/hamel/1TB/Projects/Brain_expression/2.Expression_across_brain_regions_in_control_datasets/1.Data")
+
+write(unique(sort(c(Entorhinal_Cortex_control_expressed_probes_list_F, 
+                    Entorhinal_Cortex_control_expressed_probes_list_M))), file="E-GEOD-5281_Entorhinal_Cortex.txt")
+
+write(unique(sort(c(hippocampus_control_expressed_probes_list_F, 
+                    hippocampus_control_expressed_probes_list_M))), file="E-GEOD-5281_hippocampus.txt")
+
+write(unique(sort(c(Medial_Temporal_Gyrus_control_expressed_probes_list_F, 
+                    Medial_Temporal_Gyrus_control_expressed_probes_list_M))), file="E-GEOD-5281_Medial_Temporal_Gyrus.txt")
+
+write(unique(sort(c(Posterior_Singulate_control_expressed_probes_list_F, 
+                    Posterior_Singulate_control_expressed_probes_list_M))), file="E-GEOD-5281_Posterior_Singulate.txt")
+
+write(unique(sort(c(Primary_Visual_Cortex_control_expressed_probes_list_F, 
+                    Primary_Visual_Cortex_control_expressed_probes_list_M))), file="E-GEOD-5281_Primary_Visual_Cortex.txt")
+
+write(unique(sort(c(Superior_Frontal_Gyrus_control_expressed_probes_list_F, 
+                    Superior_Frontal_Gyrus_control_expressed_probes_list_M))), file="E-GEOD-5281_Superior_Frontal_Gyrus.txt")
 
 ##### SAVE IMAGE #####
 
