@@ -28,7 +28,7 @@ options=(stringAsFactors=FALSE)
 
 raw_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/AD/E-GEOD-29378/Raw_Data"
 
-work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/2.Re-process_with_new_pipeline/AD/E-GEOD-29378/Pre-Processing"
+work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/1.Re-process_with_new_pipeline/AD/E-GEOD-29378/Pre-Processing"
 
 setwd(work_dir)
 
@@ -55,6 +55,9 @@ library(pamr)
 library(limma)
 library(sva)
 library(illuminaHumanv3.db)
+library(ggplot2)
+library(reshape)
+library(massiR)
 
 ##### DOWNLOAD RAW DATA #####
 
@@ -161,16 +164,71 @@ anyDuplicated(rownames(phenotype_data))
 
 ##### GENDER CHECK ##### 
 
-# XIST:
-# 1427262_at 
-# 1427263_at 
-# 1436936_s_at
-# 1442137_at 
-# 1458435_at 
+head(phenotype_data)
+names(phenotype_data)
 
-# PRKY
+# gender_information
+gender_info<-phenotype_data[18]
+colnames(gender_info)<-"Gender"
+table(gender_info$Gender)
+head(gender_info)
 
-# individual gender uknown - total 16 males and 19 females. estimatung gender based on XIST gene
+#separae male/female IDs
+female_samples<-subset(gender_info, Gender=="female")
+male_samples<-subset(gender_info, Gender=="male")
+
+head(female_samples)
+head(male_samples)
+
+head(brain_data_normalised_as_data_frame)[1:5]
+
+# get Y choromosome genes
+data(y.probes)
+names(y.probes)
+
+y_chromo_probes <- data.frame(y.probes["illumina_humanht_12"])
+
+# extract Y chromosome genes from dataset
+eset.select.out <- massi_select(brain_data_normalised_as_data_frame, y_chromo_probes)
+
+massi_y_plot(eset.select.out)
+massi_cluster_plot(eset.select.out)
+
+# run gender predict
+eset.results <- massi_cluster(eset.select.out)
+
+#extract gender prediction
+predicted_gender<-(eset.results$massi.results)[c(1,5)]
+rownames(predicted_gender)<-predicted_gender$ID
+predicted_gender$ID<-NULL
+colnames(predicted_gender)<-"Predicted_Gender"
+
+#compare to clinical Gender
+#standardise
+
+# gender_info$Gender<-as.character(gender_info$Gender)
+# gender_info[gender_info$Gender=="M",]<-"male"
+# gender_info[gender_info$Gender=="F",]<-"female"
+
+#merge
+gender_comparison<-merge(gender_info, predicted_gender, by="row.names")
+rownames(gender_comparison)<-gender_comparison$Row.names
+gender_comparison$Row.names<-NULL
+colnames(gender_comparison)<-c("Clinical_Gender", "Predicted_Gender")
+head(gender_comparison)
+
+#differences
+
+Gender_missmatch<-gender_comparison[which(gender_comparison$Clinical_Gender!=gender_comparison$Predicted_Gender),]
+Gender_missmatch
+
+# look at missmatch 
+
+Diagnosis[rownames(Gender_missmatch),]
+
+gender_check_results<-eset.results$massi.results
+
+gender_check_results[gender_check_results$ID %in% rownames(Gender_missmatch),]
 
 ##### PROBE ID DETECTION #####
 
@@ -221,7 +279,21 @@ dim(Hippocampus_CA2_control_exprs)
 head(Hippocampus_CA1_control_exprs)[1:5]
 head(Hippocampus_CA2_control_exprs)[1:5]
 
-# calculate 90th percentile for each sample in each group
+#separate by gender
+
+Hippocampus_CA1_control_exprs_F<-Hippocampus_CA1_control_exprs[colnames(Hippocampus_CA1_control_exprs)%in%rownames(female_samples)]
+Hippocampus_CA2_control_exprs_F<-Hippocampus_CA2_control_exprs[colnames(Hippocampus_CA2_control_exprs)%in%rownames(female_samples)]
+
+Hippocampus_CA1_case_exprs_F<-Hippocampus_CA1_case_exprs[colnames(Hippocampus_CA1_case_exprs)%in%rownames(female_samples)]
+Hippocampus_CA2_case_exprs_F<-Hippocampus_CA2_case_exprs[colnames(Hippocampus_CA2_case_exprs)%in%rownames(female_samples)]
+
+Hippocampus_CA1_control_exprs_M<-Hippocampus_CA1_control_exprs[colnames(Hippocampus_CA1_control_exprs)%in%rownames(male_samples)]
+Hippocampus_CA2_control_exprs_M<-Hippocampus_CA2_control_exprs[colnames(Hippocampus_CA2_control_exprs)%in%rownames(male_samples)]
+
+Hippocampus_CA1_case_exprs_M<-Hippocampus_CA1_case_exprs[colnames(Hippocampus_CA1_case_exprs)%in%rownames(male_samples)]
+Hippocampus_CA2_case_exprs_M<-Hippocampus_CA2_case_exprs[colnames(Hippocampus_CA2_case_exprs)%in%rownames(male_samples)]
+
+# calculate 90th percentile for each sample in each group - dataset quantile normalised - alll will have same 90th percentile cut-off
 
 extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_threshold) {
   # dataset - expression dataset as dataframe
@@ -242,40 +314,49 @@ extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_th
   colnames(dataset_count)<-"count"
   # subset good probes
   good_probes<-rownames(subset(dataset_count, dataset_count$count >= (number_of_samples*sample_threshold)))
+  #print threshold used
+  print(as.data.frame(sample_quantiles))
+  boxplot(as.data.frame(sample_quantiles))
   # return good probes
   return(good_probes)
 }
 
-# apply function - case
+#apply 
 
-Hippocampus_CA1_case_expressed_probes_list<-extract_good_probe_list(Hippocampus_CA1_case_exprs, 0.9, 0.8)
-head(Hippocampus_CA1_case_expressed_probes_list)
-length(Hippocampus_CA1_case_expressed_probes_list)
-nrow(Hippocampus_CA1_case_exprs)
+Hippocampus_CA1_case_expressed_probes_list_F<-extract_good_probe_list(Hippocampus_CA1_case_exprs_F, 0.9, 0.8)
+length(Hippocampus_CA1_case_expressed_probes_list_F)
 
-Hippocampus_CA2_case_expressed_probes_list<-extract_good_probe_list(Hippocampus_CA2_case_exprs, 0.9, 0.8)
-head(Hippocampus_CA2_case_expressed_probes_list)
-length(Hippocampus_CA2_case_expressed_probes_list)
-nrow(Hippocampus_CA2_case_exprs)
+Hippocampus_CA2_case_expressed_probes_list_F<-extract_good_probe_list(Hippocampus_CA2_case_exprs_F, 0.9, 0.8)
+length(Hippocampus_CA2_case_expressed_probes_list_F)
 
-#apply function to control
+Hippocampus_CA1_control_expressed_probes_list_F<-extract_good_probe_list(Hippocampus_CA1_control_exprs_F, 0.9, 0.8)
+length(Hippocampus_CA1_control_expressed_probes_list_F)
 
-Hippocampus_CA1_control_expressed_probes_list<-extract_good_probe_list(Hippocampus_CA1_control_exprs, 0.9, 0.8)
-head(Hippocampus_CA1_control_expressed_probes_list)
-length(Hippocampus_CA1_control_expressed_probes_list)
-nrow(Hippocampus_CA1_control_exprs)
+Hippocampus_CA2_control_expressed_probes_list_F<-extract_good_probe_list(Hippocampus_CA2_control_exprs_F, 0.9, 0.8)
+length(Hippocampus_CA2_control_expressed_probes_list_F)
 
-Hippocampus_CA2_control_expressed_probes_list<-extract_good_probe_list(Hippocampus_CA2_control_exprs, 0.9, 0.8)
-head(Hippocampus_CA2_control_expressed_probes_list)
-length(Hippocampus_CA2_control_expressed_probes_list)
-nrow(Hippocampus_CA2_control_exprs)
+Hippocampus_CA1_case_expressed_probes_list_M<-extract_good_probe_list(Hippocampus_CA1_case_exprs_M, 0.9, 0.8)
+length(Hippocampus_CA1_case_expressed_probes_list_M)
+
+Hippocampus_CA2_case_expressed_probes_list_M<-extract_good_probe_list(Hippocampus_CA2_case_exprs_M, 0.9, 0.8)
+length(Hippocampus_CA2_case_expressed_probes_list_M)
+
+Hippocampus_CA1_control_expressed_probes_list_M<-extract_good_probe_list(Hippocampus_CA1_control_exprs_M, 0.9, 0.8)
+length(Hippocampus_CA1_control_expressed_probes_list_M)
+
+Hippocampus_CA2_control_expressed_probes_list_M<-extract_good_probe_list(Hippocampus_CA2_control_exprs_M, 0.9, 0.8)
+length(Hippocampus_CA2_control_expressed_probes_list_M)
 
 # merge list of good probes from both case + control + and all brain regions, sort and keep unique values
 
-good_probe_list<-unique(sort(c(Hippocampus_CA1_case_expressed_probes_list,
-                               Hippocampus_CA2_case_expressed_probes_list,
-                               Hippocampus_CA1_control_expressed_probes_list,
-                               Hippocampus_CA2_control_expressed_probes_list)))
+good_probe_list<-unique(sort(c(Hippocampus_CA1_control_expressed_probes_list_F,
+                               Hippocampus_CA2_control_expressed_probes_list_F,
+                               Hippocampus_CA1_case_expressed_probes_list_F,
+                               Hippocampus_CA2_case_expressed_probes_list_F,
+                               Hippocampus_CA1_control_expressed_probes_list_M,
+                               Hippocampus_CA2_control_expressed_probes_list_M,
+                               Hippocampus_CA1_case_expressed_probes_list_M,
+                               Hippocampus_CA2_case_expressed_probes_list_M)))
 
 length(good_probe_list)
 
@@ -291,8 +372,7 @@ Hippocampus_CA1_control_exprs_good_probes<-Hippocampus_CA1_control_exprs[rowname
 
 Hippocampus_CA2_control_exprs_good_probes<-Hippocampus_CA2_control_exprs[rownames(Hippocampus_CA2_control_exprs)%in%good_probe_list,]
 
-
-# check dataframe - all should be 4406
+# check dataframe - all should be 4948
 
 head(Hippocampus_CA1_case_exprs_good_probes)[1:5]
 dim(Hippocampus_CA1_case_exprs_good_probes)
@@ -313,6 +393,119 @@ dim(brain_data_normalised)
 brain_data_normalised_exprs_good_probes<-brain_data_normalised_as_data_frame[rownames(brain_data_normalised_as_data_frame)%in%good_probe_list,]
 dim(brain_data_normalised_exprs_good_probes)
 head(brain_data_normalised_exprs_good_probes)[1:5]
+
+##### GENDER SPECIFIC PROBE PLOTS #####
+
+# using dataframe before probe removal
+
+# get gene symbol list for chip
+Gene_symbols_probes <- mappedkeys(illuminaHumanv3SYMBOL)
+
+# Convert to a list
+Gene_symbols <- as.data.frame(illuminaHumanv3SYMBOL[Gene_symbols_probes])
+
+head(Gene_symbols)
+dim(Gene_symbols)
+
+#xist gene - 
+XIST_probe_ID<-subset(Gene_symbols, symbol=="XIST")
+XIST_probe_ID
+
+PRKY_probe_ID<-subset(Gene_symbols, symbol=="PRKY")
+PRKY_probe_ID
+
+NLGN4Y_probe_ID<-subset(Gene_symbols, symbol=="NLGN4Y")
+NLGN4Y_probe_ID
+
+TMSB4Y_probe_ID<-subset(Gene_symbols, symbol=="TMSB4Y")
+TMSB4Y_probe_ID
+
+USP9Y_probe_ID<-subset(Gene_symbols, symbol=="USP9Y")
+USP9Y_probe_ID
+
+UTY_probe_ID<-subset(Gene_symbols, symbol=="UTY")
+UTY_probe_ID
+
+# merge all genes to check
+
+gene_list<-rbind(XIST_probe_ID,
+                 PRKY_probe_ID,
+                 NLGN4Y_probe_ID,
+                 TMSB4Y_probe_ID,
+                 USP9Y_probe_ID,
+                 UTY_probe_ID)
+
+gene_list
+
+#create function to plot
+plot_gender_specific_genes<-function(Expression_table, gender_info, genes_to_extract, threshold, boxplot_title){
+  #extract gene of interest
+  Expression_table_gene_check<-as.data.frame(t(Expression_table[genes_to_extract[,1],]))
+  #check all probes extracted
+  print(c("all probes extracted:", dim(Expression_table_gene_check)[2]==dim(genes_to_extract)[1]))
+  # change colnames TO GENE SYMBOL using genes to extract file
+  for (x in 1:dim(Expression_table_gene_check)[2]){
+    colnames(Expression_table_gene_check)[x]<-gene_list[genes_to_extract$probe_id==colnames(Expression_table_gene_check)[x],2]
+  }
+  # add in gender information
+  Expression_table_gene_check_gender<-merge(gender_info, Expression_table_gene_check, by="row.names")
+  rownames(Expression_table_gene_check_gender)<-Expression_table_gene_check_gender$Row.names
+  Expression_table_gene_check_gender$Row.names<-NULL
+  #melt dataframe for plot
+  Expression_table_gene_check_gender_melt<-melt(Expression_table_gene_check_gender, by=Gender)
+  # calculate user defined percentie threshold
+  sample_quantiles<-apply(Expression_table, 2, quantile, probs=threshold)
+  # mean of used defined threshold across samples
+  mean_threshold=mean(sample_quantiles)
+  #plot
+  qplot(variable, value, colour=get(colnames(gender_info)), data = Expression_table_gene_check_gender_melt, geom = c("boxplot", "jitter")) + 
+    geom_hline(yintercept = mean_threshold) +
+    ggtitle(boxplot_title) +
+    labs(x="Gene",y="Expression", colour = colnames(gender_info)) 
+}
+
+# plot
+
+setwd(work_dir)
+
+dir.create(paste(work_dir,"Gender_specific_gene_plots", sep="/"))
+Gender_plots_dir=paste(work_dir,"Gender_specific_gene_plots", sep="/")
+
+setwd(Gender_plots_dir)
+
+pdf("Gender_specific_gene_plot_and_detectable_cut_off_threshold_used_09.pdf")
+plot_gender_specific_genes(Hippocampus_CA1_control_exprs, gender_comparison[1], gene_list, 0.9, "Hippocampus_CA1_control")
+plot_gender_specific_genes(Hippocampus_CA2_control_exprs, gender_comparison[1], gene_list, 0.9, "Hippocampus_CA2_control")
+plot_gender_specific_genes(Hippocampus_CA1_case_exprs, gender_comparison[1], gene_list, 0.9, "Hippocampus_CA1_case")
+plot_gender_specific_genes(Hippocampus_CA2_case_exprs, gender_comparison[1], gene_list, 0.9, "Hippocampus_CA2_case")
+dev.off()
+
+# plot gender missmatches
+
+cbind(Gender_missmatch, Diagnosis[rownames(Gender_missmatch),])
+Gender_missmatch
+
+gender_missmatch_tissue_lookup<-phenotype_data[3]
+
+gender_missmatch_tissue_lookup<-merge(Gender_missmatch, gender_missmatch_tissue_lookup, by="row.names")
+rownames(gender_missmatch_tissue_lookup)<-gender_missmatch_tissue_lookup$Row.names
+gender_missmatch_tissue_lookup$Row.names<-NULL
+
+gender_missmatch_tissue_lookup<-merge(gender_missmatch_tissue_lookup, Diagnosis, by="row.names")
+rownames(gender_missmatch_tissue_lookup)<-gender_missmatch_tissue_lookup$Row.names
+gender_missmatch_tissue_lookup$Row.names<-NULL
+
+head(gender_missmatch_tissue_lookup)
+table(gender_missmatch_tissue_lookup[c(3,4)])
+
+# plot gender missmatches
+
+pdf("Gender_missmatch.pdf")
+plot_gender_specific_genes(Hippocampus_CA1_case_exprs, gender_comparison[1], gene_list, 0.9, "Hippocampus_CA1_case_clinical_gender")
+plot_gender_specific_genes(Hippocampus_CA2_case_exprs, gender_comparison[1], gene_list, 0.9, "Hippocampus_CA2_case_clinical_gender")
+plot_gender_specific_genes(Hippocampus_CA1_case_exprs, gender_comparison[2], gene_list, 0.9, "Hippocampus_CA1_case_predicted_gender")
+plot_gender_specific_genes(Hippocampus_CA2_case_exprs, gender_comparison[2], gene_list, 0.9, "Hippocampus_CA2_case_predicted_gender")
+setwd(work_dir)
 
 ##### PCA ####
 
@@ -407,19 +600,30 @@ rownames(Hippocampus_CA2_exprs_good_probes)<-Hippocampus_CA2_exprs_good_probes$R
 Hippocampus_CA2_exprs_good_probes$Row.names<-NULL
 head(Hippocampus_CA2_exprs_good_probes)[1:5]
 
+# add gender in 
+
+Hippocampus_CA1_exprs_good_probes<-merge(gender_comparison[1], Hippocampus_CA1_exprs_good_probes, by="row.names")
+rownames(Hippocampus_CA1_exprs_good_probes)<-Hippocampus_CA1_exprs_good_probes$Row.names
+Hippocampus_CA1_exprs_good_probes$Row.names<-NULL
+
+Hippocampus_CA2_exprs_good_probes<-merge(gender_comparison[1], Hippocampus_CA2_exprs_good_probes, by="row.names")
+rownames(Hippocampus_CA2_exprs_good_probes)<-Hippocampus_CA2_exprs_good_probes$Row.names
+Hippocampus_CA2_exprs_good_probes$Row.names<-NULL
+
 # create sva function
 
 check_SV_in_data<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_pheno<-sorted_by_diagnosis[1]
-  dataset_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
+  dataset_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_pheno)
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_pheno)
   # check number of SV in data
   num.sv(dataset_exprs, mod, method="leek")
 }
+
 
 # apply function
 check_SV_in_data(Hippocampus_CA1_exprs_good_probes)
@@ -431,10 +635,10 @@ adjust_for_sva<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_sva_pheno<-sorted_by_diagnosis[1]
-  dataset_sva_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
+  dataset_sva_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_sva_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_sva_pheno)
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_sva_pheno)
   mod0 = model.matrix(~1, data=dataset_sva_pheno)
   # number of SV
   num.sv(dataset_sva_exprs, mod, method="leek")
@@ -467,6 +671,11 @@ adjust_for_sva<-function(dataset){
 Hippocampus_CA1_exprs_good_probes_sva_adjusted<-adjust_for_sva(Hippocampus_CA1_exprs_good_probes)
 Hippocampus_CA2_exprs_good_probes_sva_adjusted<-adjust_for_sva(Hippocampus_CA2_exprs_good_probes)
 
+# remove gender
+
+Hippocampus_CA1_exprs_good_probes_sva_adjusted$Clinical_Gender<-NULL
+Hippocampus_CA2_exprs_good_probes_sva_adjusted$Clinical_Gender<-NULL
+
 # separate case and control
 
 Hippocampus_CA1_good_probes_sva_adjusted_case<-Hippocampus_CA1_exprs_good_probes_sva_adjusted[Hippocampus_CA1_exprs_good_probes_sva_adjusted$Diagnosis=="AD",]
@@ -474,7 +683,6 @@ Hippocampus_CA1_good_probes_sva_adjusted_control<-Hippocampus_CA1_exprs_good_pro
 
 dim(Hippocampus_CA1_good_probes_sva_adjusted_case)
 dim(Hippocampus_CA1_good_probes_sva_adjusted_control)
-
 
 Hippocampus_CA2_good_probes_sva_adjusted_case<-Hippocampus_CA2_exprs_good_probes_sva_adjusted[Hippocampus_CA2_exprs_good_probes_sva_adjusted$Diagnosis=="AD",]
 Hippocampus_CA2_good_probes_sva_adjusted_control<-Hippocampus_CA2_exprs_good_probes_sva_adjusted[Hippocampus_CA2_exprs_good_probes_sva_adjusted$Diagnosis=="CONTROL",]
@@ -805,21 +1013,78 @@ head(brain_data_QCd_entrez_id_unique[1:5])
 
 ##### ATTACH DIAGNOSIS AND BRAIN REGION #####
 
-# Diagnosis + tissue lookup
+head(phenotype_data)
+names(phenotype_data)
 
-Diagnosis 
+phenotype_to_attach<-phenotype_data[c(3, 5, 7, 44)]
 
-brain_region_lookup
+head(phenotype_to_attach)
 
-rownames(Diagnosis)==rownames(brain_region_lookup)
+# rename columns
 
-Diagnosis_and_tissue_type_lookup<-cbind(brain_region_lookup, Diagnosis)
+colnames(phenotype_to_attach)<-c("Tissue", "Age", "BRAAK", "APOE")
 
-Diagnosis_and_tissue_type_lookup
+# standardise gender columns
 
-colnames(Diagnosis_and_tissue_type_lookup)<-c("Tissue", "Diagnosis")
+table(phenotype_to_attach$Gender, exclude=NULL)
 
-brain_data_QCd_entrez_id_unique_pheno<-merge(Diagnosis_and_tissue_type_lookup, brain_data_QCd_entrez_id_unique, by="row.names")
+# add additional columns as unknown - AGE, GENDER, BRAAK
+
+phenotype_to_attach$MMSE<-"Unknown"
+phenotype_to_attach$APOE<-"Unknown"
+
+# phenotype_to_attach - change Tissue name
+table(phenotype_to_attach$Tissue)
+
+phenotype_to_attach[phenotype_to_attach$Tissue=="hippocampus - CA1",1]<-"Hippocampus_CA1"
+phenotype_to_attach[phenotype_to_attach$Tissue=="hippocampus - CA3",1]<-"Hippocampus_CA3"
+
+# add diagnosis
+
+phenotype_to_attach<-merge(phenotype_to_attach, Diagnosis, by="row.names")
+rownames(phenotype_to_attach)<- phenotype_to_attach$Row.names
+phenotype_to_attach$Row.names<-NULL
+
+# add gender
+
+phenotype_to_attach<-merge(phenotype_to_attach, gender_comparison, by="row.names")
+rownames(phenotype_to_attach)<-phenotype_to_attach$Row.names
+phenotype_to_attach$Row.names<-NULL
+head(phenotype_to_attach)
+
+# standardise diagnosis
+
+phenotype_to_attach[phenotype_to_attach$Diagnosis=="CONTROL",6]<-"Control"
+
+# convetr NA to Uknown
+phenotype_to_attach[is.na(phenotype_to_attach)]<-"Unknown"
+
+#check BRAAK available for all AD samples - convert NA to "Unknown"
+
+table(phenotype_to_attach$BRAAK, exclude=NULL)
+phenotype_to_attach$Diagnosis_sub_cat<-phenotype_to_attach$Diagnosis
+
+# for AD_Category column, change Diagnosis AD and BRAAK = 4 to Moderate AD
+
+head(phenotype_to_attach)
+phenotype_to_attach[phenotype_to_attach$Diagnosis=="AD" & phenotype_to_attach$BRAAK=="4", 9]<-"Moderate_AD"
+
+# for AD_Category column, change Diagnosis AD and BRAAK = 5/6 to Severe AD
+
+phenotype_to_attach[phenotype_to_attach$Diagnosis=="AD" & phenotype_to_attach$BRAAK=="5" | phenotype_to_attach$BRAAK=="6" , 9]<-"Severe_AD"
+
+table(phenotype_to_attach$Diagnosis_sub_cat, exclude=NULL)
+
+# order pheno information
+
+phenotype_to_attach<-phenotype_to_attach[,order(names(phenotype_to_attach), decreasing = T)]
+
+# should be 9 colnames - Diagnosis", "Tissue", "Age", "Clinical_Gender", "Predicted_Gender", "MMSE", "BRAAK", "APOE", "Diagnosis_sub_cat"
+colnames(phenotype_to_attach)
+
+# add phenotype to expression
+
+brain_data_QCd_entrez_id_unique_pheno<-merge(phenotype_to_attach, brain_data_QCd_entrez_id_unique, by="row.names")
 
 head(brain_data_QCd_entrez_id_unique_pheno)[1:5]
 
@@ -830,6 +1095,7 @@ brain_data_QCd_entrez_id_unique_pheno$Row.names<-NULL
 head(brain_data_QCd_entrez_id_unique_pheno)[1:5]
 
 dim(brain_data_QCd_entrez_id_unique_pheno)
+dim(brain_data_QCd_entrez_id_unique)
 
 ##### SAVE EXPRESSION DATAFRAME #####
 
@@ -843,6 +1109,15 @@ setwd(clean_data_dir)
 
 write.table(phenotype_data, file="E-GEOD-29378_phenotype_data2.txt", sep="\t")
 
+##### WRITE LIST OF CONTROL GENES EXPRESSED #####
+
+setwd("/media/hamel/1TB/Projects/Brain_expression/2.Expression_across_brain_regions_in_control_datasets/1.Data")
+
+write(unique(sort(c(Hippocampus_CA1_control_expressed_probes_list_F, 
+                    Hippocampus_CA1_control_expressed_probes_list_M))), file="E-GEOD-29378_Hippocampus_CA1.txt")
+
+write(unique(sort(c(Hippocampus_CA2_control_expressed_probes_list_F, 
+                    Hippocampus_CA2_control_expressed_probes_list_M))), file="E-GEOD-29378_Hippocampus_CA2.txt")
 
 ##### SAVE IMAGE #####
 
