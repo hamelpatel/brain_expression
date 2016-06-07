@@ -3,7 +3,7 @@
 ####                                                                                                                                  ####
 ###                                                                                                                                    ###
 ##                                                                                                                                      ##
-#                                                     AD - E-GEOD-12685  - PIEPLINE V02                                                  #
+#                                   AD - E-GEOD-12685  - PIEPLINE V02  **ONLY MCI SAMPLES***                                             #
 ##                                                                                                                                      ##
 ###                                                                                                                                    ###
 ####                                                                                                                                  ####
@@ -25,7 +25,7 @@ options=(stringAsFactors=FALSE)
 
 raw_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/AD/E-GEOD-12685/Raw_Data"
 
-work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/2.Re-process_with_new_pipeline/AD/E-GEOD-12685/Pre-processing"
+work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/1.Re-process_with_new_pipeline/AD/E-GEOD-12685/Pre-processing"
 
 setwd(work_dir)
 
@@ -52,6 +52,10 @@ library(pamr)
 library(limma)
 library(sva)
 library(hgu133a.db)
+library(ggplot2)
+library(reshape)
+library(massiR)
+library(stringi)
 
 ##### DOWNLOAD RAW DATA #####
 
@@ -159,15 +163,55 @@ write(file = "E-GEOD-12685_probe_IDs.txt", probe_ids, sep="\t")
 anyDuplicated(rownames(phenotype_data))
 
 ##### GENDER CHECK ##### 
+phenotype_data
 
-# XIST:
-# 1427262_at 
-# 1427263_at 
-# 1436936_s_at
-# 1442137_at 
-# 1458435_at 
+# gender_information - unknown
+gender_info<-phenotype_data[1]
+colnames(gender_info)<-"Gender"
+gender_info$Gender<-"Unknown"
+table(gender_info$Gender)
 
-# PRKY
+# get Y choromosome genes
+data(y.probes)
+names(y.probes)
+
+y_chromo_probes <- data.frame(y.probes["affy_hg_u133_plus_2"])
+
+# extract Y chromosome genes from dataset
+eset.select.out <- massi_select(brain_data_normalised_as_data_frame, y_chromo_probes, threshold=4)
+
+massi_y_plot(eset.select.out)
+massi_cluster_plot(eset.select.out)
+
+# run gender predict
+eset.results <- massi_cluster(eset.select.out)
+
+#extract gender prediction
+predicted_gender<-(eset.results$massi.results)[c(1,5)]
+rownames(predicted_gender)<-predicted_gender$ID
+predicted_gender$ID<-NULL
+colnames(predicted_gender)<-"Predicted_Gender"
+
+#compare to clinical Gender
+#standardise
+
+# gender_info$Gender<-as.character(gender_info$Gender)
+# gender_info[gender_info$Gender=="M",]<-"male"
+# gender_info[gender_info$Gender=="F",]<-"female"
+
+#merge
+gender_comparison<-merge(gender_info, predicted_gender, by="row.names")
+rownames(gender_comparison)<-gender_comparison$Row.names
+gender_comparison$Row.names<-NULL
+colnames(gender_comparison)<-c("Clinical_Gender", "Predicted_Gender")
+head(gender_comparison)
+
+#separae male/female IDs
+female_samples<-subset(gender_comparison, Predicted_Gender=="female")
+male_samples<-subset(gender_comparison, Predicted_Gender=="male")
+
+head(female_samples)
+head(male_samples)
 
 ##### PROBE ID DETECTION #####
 
@@ -193,6 +237,15 @@ dim(case_exprs)
 head(control_exprs)
 dim(control_exprs)
 
+# separate by gender
+
+case_exprs_F<-case_exprs[colnames(case_exprs)%in%rownames(female_samples)]
+case_exprs_M<-case_exprs[colnames(case_exprs)%in%rownames(male_samples)]
+
+control_exprs_F<-control_exprs[colnames(control_exprs)%in%rownames(female_samples)]
+control_exprs_M<-control_exprs[colnames(control_exprs)%in%rownames(male_samples)]
+
+
 # calculate 90th percentile for each sample in each group
 
 extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_threshold) {
@@ -214,35 +267,43 @@ extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_th
   colnames(dataset_count)<-"count"
   # subset good probes
   good_probes<-rownames(subset(dataset_count, dataset_count$count >= (number_of_samples*sample_threshold)))
+  #print threshold used
+  print(as.data.frame(sample_quantiles))
+  boxplot(as.data.frame(sample_quantiles))
   # return good probes
   return(good_probes)
 }
 
-#
+# apply function to case samples -**** percentile cut-off dropped to 0.7 based on number of probes selected + XIST gene expression in females is low
 
-case_expressed_probes_list<-extract_good_probe_list(case_exprs, 0.9, 0.8)
-head(case_expressed_probes_list)
-length(case_expressed_probes_list)
-nrow(case_exprs)
+case_exprs_F_expressed_probes_list<-extract_good_probe_list(case_exprs_F, 0.7, 0.8)
+length(case_exprs_F_expressed_probes_list)
 
-control_expressed_probes_list<-extract_good_probe_list(control_exprs, 0.9, 0.8)
-head(control_expressed_probes_list)
-length(control_expressed_probes_list)
-nrow(control_exprs)
+case_exprs_M_expressed_probes_list<-extract_good_probe_list(case_exprs_M, 0.7, 0.8)
+length(case_exprs_M_expressed_probes_list)
+
+control_exprs_F_expressed_probes_list<-extract_good_probe_list(control_exprs_F, 0.7, 0.8)
+length(control_exprs_F_expressed_probes_list)
+
+control_exprs_M_expressed_probes_list<-extract_good_probe_list(control_exprs_M, 0.7, 0.8)
+length(control_exprs_M_expressed_probes_list)
 
 # merge list of good probes from both case + control, sort and keep unique values
 
-good_probe_list<-unique(sort(c(case_expressed_probes_list, control_expressed_probes_list)))
+good_probe_list<-unique(sort(c(case_exprs_F_expressed_probes_list,
+                               case_exprs_M_expressed_probes_list,
+                               control_exprs_F_expressed_probes_list,
+                               control_exprs_M_expressed_probes_list)))
 
 length(good_probe_list)
 
 # extract good probes from dataset
 
-brain_exprs_good_probes<-as.data.frame(t(brain_data_normalised_as_data_frame[rownames(brain_data_normalised_as_data_frame)%in%good_probe_list,]))
+brain_exprs_good_probes<-brain_data_normalised_as_data_frame[rownames(brain_data_normalised_as_data_frame)%in%good_probe_list,]
 
-brain_case_exprs_good_probes<-as.data.frame(t(case_exprs[rownames(case_exprs)%in%good_probe_list,]))
+brain_case_exprs_good_probes<-case_exprs[rownames(case_exprs)%in%good_probe_list,]
 
-brain_control_exprs_good_probes<-as.data.frame(t(control_exprs[rownames(control_exprs)%in%good_probe_list,]))
+brain_control_exprs_good_probes<-control_exprs[rownames(control_exprs)%in%good_probe_list,]
 
 head(brain_exprs_good_probes)[1:5]
 dim(brain_data_normalised)
@@ -250,11 +311,99 @@ dim(brain_exprs_good_probes)
 dim(brain_case_exprs_good_probes)
 dim(brain_control_exprs_good_probes)
 
+##### GENDER SPECIFIC PROBE PLOTS #####
+
+# using dataframe before probe removal
+
+# get gene symbol list for chip
+Gene_symbols_probes <- mappedkeys(hgu133aSYMBOL)
+
+# Convert to a list
+Gene_symbols <- as.data.frame(hgu133aSYMBOL[Gene_symbols_probes])
+
+head(Gene_symbols)
+dim(Gene_symbols)
+
+#xist gene - 
+XIST_probe_ID<-subset(Gene_symbols, symbol=="XIST")
+XIST_probe_ID
+
+PRKY_probe_ID<-subset(Gene_symbols, symbol=="PRKY")
+PRKY_probe_ID
+
+NLGN4Y_probe_ID<-subset(Gene_symbols, symbol=="NLGN4Y")
+NLGN4Y_probe_ID
+
+TMSB4Y_probe_ID<-subset(Gene_symbols, symbol=="TMSB4Y")
+TMSB4Y_probe_ID
+
+USP9Y_probe_ID<-subset(Gene_symbols, symbol=="USP9Y")
+USP9Y_probe_ID
+
+UTY_probe_ID<-subset(Gene_symbols, symbol=="UTY")
+UTY_probe_ID
+
+# merge all genes 
+gene_list<-rbind(XIST_probe_ID,
+                 PRKY_probe_ID,
+                 NLGN4Y_probe_ID,
+                 TMSB4Y_probe_ID,
+                 USP9Y_probe_ID,
+                 UTY_probe_ID)
+
+#create function to plot
+plot_gender_specific_genes<-function(Expression_table, gender_info, genes_to_extract, threshold, boxplot_title){
+  #extract gene of interest
+  Expression_table_gene_check<-as.data.frame(t(Expression_table[rownames(Expression_table)%in% genes_to_extract$probe_id,]))
+  #check all probes extracted
+  print(c("all probes extracted:", dim(Expression_table_gene_check)[2]==dim(genes_to_extract)[1]))
+  # change colnames TO GENE SYMBOL using genes to extract file
+  for (x in 1:dim(Expression_table_gene_check)[2]){
+    colnames(Expression_table_gene_check)[x]<-gene_list[genes_to_extract$probe_id==colnames(Expression_table_gene_check)[x],2]
+  }
+  # add in gender information
+  Expression_table_gene_check_gender<-merge(gender_info, Expression_table_gene_check, by="row.names")
+  rownames(Expression_table_gene_check_gender)<-Expression_table_gene_check_gender$Row.names
+  Expression_table_gene_check_gender$Row.names<-NULL
+  #melt dataframe for plot
+  Expression_table_gene_check_gender_melt<-melt(Expression_table_gene_check_gender, by=Gender)
+  # calculate user defined percentie threshold
+  sample_quantiles<-apply(Expression_table, 2, quantile, probs=threshold)
+  #print sample quantiles
+  print(as.data.frame(sample_quantiles))
+  # mean of used defined threshold across samples
+  mean_threshold=mean(sample_quantiles)
+  #plot
+  qplot(variable, value, colour=get(colnames(gender_info)), data = Expression_table_gene_check_gender_melt, geom = c("boxplot", "jitter")) + 
+    geom_hline(yintercept = mean_threshold) +
+    ggtitle(boxplot_title) +
+    labs(x="Gene",y="Expression", colour = colnames(gender_info)) 
+}
+
+# plot
+
+setwd(work_dir)
+
+dir.create(paste(work_dir,"Gender_specific_gene_plots", sep="/"))
+Gender_plots_dir=paste(work_dir,"Gender_specific_gene_plots", sep="/")
+
+setwd(Gender_plots_dir)
+
+pdf("Predicted_Gender_specific_gene_plot_and_detectable_09_cut_off_threshold_used.pdf")
+plot_gender_specific_genes(case_exprs, gender_comparison[2], gene_list, 0.9, "Prefrontal_cortex_case_0.9_cut-off")
+plot_gender_specific_genes(control_exprs, gender_comparison[2], gene_list, 0.9, "Prefrontal_cortex_exprs_0.9_cut-off")
+dev.off()
+
+pdf("Predicted_Gender_specific_gene_plot_and_detectable_07_cut_off_threshold_used.pdf")
+plot_gender_specific_genes(case_exprs, gender_comparison[2], gene_list, 0.7, "Prefrontal_cortex_case_0.7_cut-off")
+plot_gender_specific_genes(control_exprs, gender_comparison[2], gene_list, 0.7, "Prefrontal_cortex_0.7_cut-off")
+dev.off()
+
 ##### PCA ####
 
 # calculate pca
 
-pca<-prcomp(t(brain_exprs_good_probes))
+pca<-prcomp(brain_exprs_good_probes)
 
 # plot variance
 plot(pca, type="l")
@@ -285,7 +434,7 @@ Diagnosis_lookup
 
 
 # order of samples in expression data
-Diagnosis_temp<-colnames(t(brain_exprs_good_probes))
+Diagnosis_temp<-colnames(brain_exprs_good_probes)
 Diagnosis_temp
 
 # match order
@@ -297,7 +446,7 @@ Diagnosis_pca_color<-labels2colors(as.character(Diagnosis_pca))
 
 # pca plot
 plot(pca$rotation[,1:2], main=" PCA plot coloured by chip before_QC",col="black", pch=21,bg=Diagnosis_pca_color)
-legend('bottomleft', unique(Diagnosis_pca), fill=unique(Diagnosis_pca_color))
+legend('bottomright', unique(Diagnosis_pca), fill=unique(Diagnosis_pca_color))
 
 setwd(work_dir)
 
@@ -312,7 +461,6 @@ brain_control_exprs_good_probes<-cbind(Diagnosis = "CONTROL", brain_control_expr
 head(brain_case_exprs_good_probes)[1:5]
 head(brain_control_exprs_good_probes)[1:5]
 
-
 # check order of gene in each dataframe
 
 any(colnames(brain_case_exprs_good_probes)==colnames(brain_control_exprs_good_probes))==F
@@ -322,16 +470,23 @@ any(colnames(brain_case_exprs_good_probes)==colnames(brain_control_exprs_good_pr
 Frontal_Cortex_good_probes<-rbind(brain_case_exprs_good_probes, brain_control_exprs_good_probes)
 head(Frontal_Cortex_good_probes)[1:5]
 
-# create sva function
+# add Predicted gender in 
+Frontal_Cortex_good_probes<-merge(gender_comparison[2], Frontal_Cortex_good_probes, by="row.names")
+rownames(Frontal_Cortex_good_probes)<-Frontal_Cortex_good_probes$Row.names
+Frontal_Cortex_good_probes$Row.names<-NULL
+head(Frontal_Cortex_good_probes)[1:5]
+
+
+# create sva function - useses predicted gender
 
 check_SV_in_data<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_pheno<-sorted_by_diagnosis[1]
-  dataset_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
+  dataset_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_pheno)
+  mod = model.matrix(~Diagnosis+Predicted_Gender, data=dataset_pheno)
   # check number of SV in data
   num.sv(dataset_exprs, mod, method="leek")
 }
@@ -340,16 +495,16 @@ check_SV_in_data<-function(dataset){
 
 check_SV_in_data(Frontal_Cortex_good_probes)
 
-# create function to adjust for SV
+# create function to adjust for SV - uses predicted gender
 
 adjust_for_sva<-function(dataset){
   # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
   sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
   # separate expresion and pheno
-  dataset_sva_pheno<-sorted_by_diagnosis[1]
-  dataset_sva_exprs<-t(sorted_by_diagnosis[2:dim(sorted_by_diagnosis)[2]])
+  dataset_sva_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_sva_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
   #full model matrix for Diagnosis
-  mod = model.matrix(~Diagnosis, data=dataset_sva_pheno)
+  mod = model.matrix(~Diagnosis+Predicted_Gender, data=dataset_sva_pheno)
   mod0 = model.matrix(~1, data=dataset_sva_pheno)
   # number of SV
   num.sv(dataset_sva_exprs, mod, method="leek")
@@ -388,6 +543,10 @@ Frontal_Cortex_good_probes_sva_adjusted_control<-Frontal_Cortex_good_probes_sva_
 
 dim(Frontal_Cortex_good_probes_sva_adjusted_case)
 dim(Frontal_Cortex_good_probes_sva_adjusted_control)
+
+# remove gender
+Frontal_Cortex_good_probes_sva_adjusted_case$Predicted_Gender<-NULL
+Frontal_Cortex_good_probes_sva_adjusted_control$Predicted_Gender<-NULL
 
 ##### SAMPLE NETWORK PLOT #####
 
@@ -673,23 +832,66 @@ head(brain_data_QCd_entrez_id_unique[1:5])
 
 ##### ATTACH DIAGNOSIS AND BRAIN REGION #####
 
+
 # Diagnosis + tissue lookup
 
 head(phenotype_data)
 
-Diagnosis
+# keep columns - Comment..Sample_characteristics.
 
-Diagnosis_and_tissue_type_lookup<-Diagnosis
+phenotype_to_attach<-phenotype_data[6]
 
-Diagnosis_and_tissue_type_lookup$Tissue<-"Frontal Cortex"
+head(phenotype_to_attach)
 
-Diagnosis_and_tissue_type_lookup<-Diagnosis_and_tissue_type_lookup[2:1]
+# extract MMSE score  - last 3 characters
 
-colnames(Diagnosis_and_tissue_type_lookup)<-c("Tissue", "Diagnosis")
+phenotype_to_attach$MMSE<-as.numeric(stri_sub(phenotype_to_attach$Comment..Sample_characteristics., -3, -1))
 
-Diagnosis_and_tissue_type_lookup
+phenotype_to_attach$Comment..Sample_characteristics.<-NULL
 
-brain_data_QCd_entrez_id_unique_pheno<-merge(Diagnosis_and_tissue_type_lookup, brain_data_QCd_entrez_id_unique, by="row.names")
+head(phenotype_to_attach)
+
+#add Diagnosis
+
+phenotype_to_attach<-merge(phenotype_to_attach, Diagnosis, by="row.names")
+rownames(phenotype_to_attach)<- phenotype_to_attach$Row.names
+phenotype_to_attach$Row.names<-NULL
+
+# Tissue
+phenotype_to_attach$Tissue<-"Prefrontal_Cortex"
+
+# add additional columns as unknown - AGE, GENDER, BRAAK
+
+phenotype_to_attach$BRAAK<-"Unknown"
+phenotype_to_attach$Age<-"Unknown"
+phenotype_to_attach$APOE<-"Unknown"
+
+# Diagnosis_sub_cat
+
+phenotype_to_attach$Diagnosis_sub_cat<-phenotype_to_attach$Diagnosis
+table(phenotype_to_attach$Diagnosis_sub_cat)
+table(phenotype_to_attach$Diagnosis)
+
+# change diagnosis name
+
+phenotype_to_attach[phenotype_to_attach$Diagnosis=="Incipient_AD",2]<-"MCI"
+
+# gender
+
+phenotype_to_attach<-merge(phenotype_to_attach, gender_comparison, by="row.names")
+rownames(phenotype_to_attach)<- phenotype_to_attach$Row.names
+phenotype_to_attach$Row.names<-NULL
+
+
+#order
+phenotype_to_attach<-phenotype_to_attach[,order(names(phenotype_to_attach), decreasing = T)]
+
+# should be 9 colnames - Diagnosis", "Tissue", "Age", "Clinical_Gender", "Predicted_Gender", "MMSE", "BRAAK", "APOE", "Diagnosis_sub_cat"
+colnames(phenotype_to_attach)
+
+#merge
+
+brain_data_QCd_entrez_id_unique_pheno<-merge(phenotype_to_attach, brain_data_QCd_entrez_id_unique, by="row.names")
 
 head(brain_data_QCd_entrez_id_unique_pheno)[1:5]
 
@@ -698,6 +900,9 @@ rownames(brain_data_QCd_entrez_id_unique_pheno)<-brain_data_QCd_entrez_id_unique
 brain_data_QCd_entrez_id_unique_pheno$Row.names<-NULL
 
 head(brain_data_QCd_entrez_id_unique_pheno)[1:5]
+
+dim(brain_data_QCd_entrez_id_unique_pheno)
+dim(brain_data_QCd_entrez_id_unique)
 
 ##### SAVE EXPRESSION DATAFRAME #####
 
@@ -710,6 +915,12 @@ write.table(brain_data_QCd_entrez_id_unique_pheno, file="E-GEOD-12685_pre-proces
 setwd(clean_data_dir)
 
 write.table(phenotype_data, file="E-GEOD-12685_phenotype_data2.txt", sep="\t")
+
+##### WRITE LIST OF CONTROL GENES EXPRESSED #####
+
+setwd("/media/hamel/1TB/Projects/Brain_expression/2.Expression_across_brain_regions_in_control_datasets/1.Data")
+
+write(unique(sort(c(control_exprs_M_expressed_probes_list, control_exprs_F_expressed_probes_list))), file="E-GEOD-12685_Prefrontal_cortex.txt")
 
 ##### SAVE IMAGE #####
 
