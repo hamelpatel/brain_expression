@@ -27,7 +27,7 @@ options=(stringAsFactors=FALSE)
 
 raw_dir="/media/hamel/Workspace/Projects/Brain_expression/1.Data/AD/AMP_MayoeGWAS/Raw_Data"
 
-work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/2.Re-process_with_new_pipeline/AD/AMP_MAyoeGWAS/Pre-processing"
+work_dir="/media/hamel/1TB/Projects/Brain_expression/1.Data/1.Re-process_with_new_pipeline/AD/AMP_MAyoeGWAS/Pre-processing"
 
 setwd(work_dir)
 
@@ -53,6 +53,9 @@ library(pamr)
 library(limma)
 library(sva)
 library(illuminaHumanv3.db)
+library(ggplot2)
+library(reshape)
+library(massiR)
 
 ##### READ IN PROCESSED DATA ######
 
@@ -185,9 +188,323 @@ anyDuplicated(rownames(Temporal_cortex_pheno$IID))
 anyDuplicated(colnames(Temporal_cortex_exprs_dataframe))
 anyDuplicated(colnames(Cerebellum_exprs_dataframe))
 
+##### GENDER CHECK ##### 
+
+head(Cerebellum_pheno)
+names(Cerebellum_pheno)
+
+# gender_information - Cerebellum
+Cerebellum_gender_info<-Cerebellum_pheno[2]
+colnames(Cerebellum_gender_info)<-"Gender"
+table(Cerebellum_gender_info$Gender)
+head(Cerebellum_gender_info)
+
+# gender_information - Temporal_cortex
+Temporal_cortex_gender_info<-Temporal_cortex_pheno[2]
+colnames(Temporal_cortex_gender_info)<-"Gender"
+table(Temporal_cortex_gender_info$Gender)
+head(Temporal_cortex_gender_info)
+
+#standardise gender
+
+Cerebellum_gender_info[Cerebellum_gender_info$Gender=="Female",1]<-"female"
+Cerebellum_gender_info[Cerebellum_gender_info$Gender=="Male",1]<-"male"
+Temporal_cortex_gender_info[Temporal_cortex_gender_info$Gender=="Female",1]<-"female"
+Temporal_cortex_gender_info[Temporal_cortex_gender_info$Gender=="Male",1]<-"male"
+
+#separae male/female IDs
+Cerebellum_female_samples<-subset(Cerebellum_gender_info, Gender=="female")
+Cerebellum_male_samples<-subset(Cerebellum_gender_info, Gender=="male")
+Temporal_cortex_female_samples<-subset(Temporal_cortex_gender_info, Gender=="female")
+Temporal_cortex_male_samples<-subset(Temporal_cortex_gender_info, Gender=="male")
+
+head(Cerebellum_female_samples)
+head(Cerebellum_male_samples)
+head(Temporal_cortex_female_samples)
+head(Temporal_cortex_male_samples)
+
+# get Y choromosome genes
+data(y.probes)
+names(y.probes)
+
+y_chromo_probes <- data.frame(y.probes["illumina_humanwg_6_v2"])
+
+y_chromo_probes
+
+# extract Y chromosome genes from dataset
+Cerebellum.eset.select.out <- massi_select(Cerebellum_exprs_dataframe, y_chromo_probes)
+Temporal_cortex.eset.select.out <- massi_select(Temporal_cortex_exprs_dataframe, y_chromo_probes)
+
+massi_y_plot(Cerebellum.eset.select.out)
+massi_cluster_plot(Cerebellum.eset.select.out)
+massi_y_plot(Temporal_cortex.eset.select.out)
+massi_cluster_plot(Temporal_cortex.eset.select.out)
+
+# run gender predict
+Cerebellum.eset.results <- massi_cluster(Cerebellum.eset.select.out)
+Temporal_cortex.eset.results <- massi_cluster(Temporal_cortex.eset.select.out)
+
+#extract gender prediction
+Cerebellum_predicted_gender<-(Cerebellum.eset.results$massi.results)[c(1,5)]
+rownames(Cerebellum_predicted_gender)<-Cerebellum_predicted_gender$ID
+Cerebellum_predicted_gender$ID<-NULL
+colnames(Cerebellum_predicted_gender)<-"Predicted_Gender"
+
+Temporal_cortex_predicted_gender<-(Temporal_cortex.eset.results$massi.results)[c(1,5)]
+rownames(Temporal_cortex_predicted_gender)<-Temporal_cortex_predicted_gender$ID
+Temporal_cortex_predicted_gender$ID<-NULL
+colnames(Temporal_cortex_predicted_gender)<-"Predicted_Gender"
+
+
+#merge
+Cerebellum_gender_comparison<-merge(Cerebellum_gender_info, Cerebellum_predicted_gender, by="row.names")
+rownames(Cerebellum_gender_comparison)<-Cerebellum_gender_comparison$Row.names
+Cerebellum_gender_comparison$Row.names<-NULL
+colnames(Cerebellum_gender_comparison)<-c("Clinical_Gender", "Predicted_Gender")
+head(Cerebellum_gender_comparison)
+
+Temporal_cortex_gender_comparison<-merge(Temporal_cortex_gender_info, Temporal_cortex_predicted_gender, by="row.names")
+rownames(Temporal_cortex_gender_comparison)<-Temporal_cortex_gender_comparison$Row.names
+Temporal_cortex_gender_comparison$Row.names<-NULL
+colnames(Temporal_cortex_gender_comparison)<-c("Clinical_Gender", "Predicted_Gender")
+head(Temporal_cortex_gender_comparison)
+
+#differences
+
+Cerebellum_Gender_missmatch<-Cerebellum_gender_comparison[which(Cerebellum_gender_comparison$Clinical_Gender!=Cerebellum_gender_comparison$Predicted_Gender),]
+Cerebellum_Gender_missmatch
+
+Temporal_cortex_Gender_missmatch<-Temporal_cortex_gender_comparison[which(Temporal_cortex_gender_comparison$Clinical_Gender!=Temporal_cortex_gender_comparison$Predicted_Gender),]
+Temporal_cortex_Gender_missmatch
+
 ##### PROBE ID DETECTION #####
 
-# probe filtering already done to a level of 75% detection
+# separate case control 
+
+Cerebellum_case_ID<-rownames(Cerebellum_pheno[Cerebellum_pheno$Diagnosis=="AD",])
+Cerebellum_control_ID<-rownames(Cerebellum_pheno[Cerebellum_pheno$Diagnosis=="Control",])
+Temporal_cortex_case_ID<-rownames(Temporal_cortex_pheno[Temporal_cortex_pheno$Diagnosis=="AD",])
+Temporal_cortex_control_ID<-rownames(Temporal_cortex_pheno[Temporal_cortex_pheno$Diagnosis=="Control",])
+
+Cerebellum_case_exprs<-Cerebellum_exprs_dataframe[,colnames(Cerebellum_exprs_dataframe)%in%Cerebellum_case_ID]
+Cerebellum_control_exprs<-Cerebellum_exprs_dataframe[,colnames(Cerebellum_exprs_dataframe)%in%Cerebellum_control_ID]
+Temporal_cortex_case_exprs<-Temporal_cortex_exprs_dataframe[,colnames(Temporal_cortex_exprs_dataframe)%in%Temporal_cortex_case_ID]
+Temporal_cortex_control_exprs<-Temporal_cortex_exprs_dataframe[,colnames(Temporal_cortex_exprs_dataframe)%in%Temporal_cortex_control_ID]
+
+head(Cerebellum_case_exprs[1:5])
+dim(Cerebellum_case_exprs)
+head(Cerebellum_control_exprs[1:5])
+dim(Cerebellum_control_exprs)
+head(Temporal_cortex_case_exprs[1:5])
+dim(Temporal_cortex_case_exprs)
+head(Temporal_cortex_control_exprs[1:5])
+dim(Temporal_cortex_control_exprs)
+
+
+#separate by gender
+
+Cerebellum_control_exprs_F<-Cerebellum_control_exprs[colnames(Cerebellum_control_exprs)%in%rownames(Cerebellum_female_samples)]
+Temporal_cortex_control_exprs_F<-Temporal_cortex_control_exprs[colnames(Temporal_cortex_control_exprs)%in%rownames(Temporal_cortex_female_samples)]
+
+Cerebellum_case_exprs_F<-Cerebellum_case_exprs[colnames(Cerebellum_case_exprs)%in%rownames(Cerebellum_female_samples)]
+Temporal_cortex_case_exprs_F<-Temporal_cortex_case_exprs[colnames(Temporal_cortex_case_exprs)%in%rownames(Temporal_cortex_female_samples)]
+
+Cerebellum_control_exprs_M<-Cerebellum_control_exprs[colnames(Cerebellum_control_exprs)%in%rownames(Cerebellum_male_samples)]
+Temporal_cortex_control_exprs_M<-Temporal_cortex_control_exprs[colnames(Temporal_cortex_control_exprs)%in%rownames(Temporal_cortex_male_samples)]
+
+Cerebellum_case_exprs_M<-Cerebellum_case_exprs[colnames(Cerebellum_case_exprs)%in%rownames(Cerebellum_male_samples)]
+Temporal_cortex_case_exprs_M<-Temporal_cortex_case_exprs[colnames(Temporal_cortex_case_exprs)%in%rownames(Temporal_cortex_male_samples)]
+
+# calculate 90th percentile for each sample in each group - quantile normalisedd - dataset already 25th percentile removed - adjusting to 90th percentile - using 86%
+
+extract_good_probe_list<-function(dataset, probe_percentile_threshold, sample_threshold) {
+  # dataset - expression dataset as dataframe
+  # probe_percentile_threshold - percentile at which to use as cut-off for detected probes = 90th (compared to negative bead controls) - 0.9 = 90th percentile
+  # number of samples in which probe must be expressed in - i.e 0.8 = 80% of samples
+  # calculate quantile threshold for each sample
+  sample_quantiles<-apply(dataset, 2, quantile, probs=c(probe_percentile_threshold))
+  # count length of quantile - will be number of samples
+  number_of_samples<-length(sample_quantiles)
+  # convert probes values to NA in for each sample if probe expression value below sample percentile cut-off
+  for (x in 1:number_of_samples) {
+    is.na(dataset[x]) <- dataset[x] >= sample_quantiles[x]
+  }
+  # convert to dataframe
+  dataset_dataframe<-as.data.frame(dataset)
+  # count number of NA
+  dataset_count<-as.data.frame(rowSums(is.na(dataset_dataframe)))
+  colnames(dataset_count)<-"count"
+  # subset good probes
+  good_probes<-rownames(subset(dataset_count, dataset_count$count >= (number_of_samples*sample_threshold)))
+  #print threshold used
+  print(as.data.frame(sample_quantiles))
+  boxplot(as.data.frame(sample_quantiles))
+  # return good probes
+  return(good_probes)
+}
+
+#apply 
+
+Cerebellum_case_expressed_probes_list_F<-extract_good_probe_list(Cerebellum_case_exprs_F, 0.7, 0.8)
+length(Cerebellum_case_expressed_probes_list_F)
+
+Temporal_cortex_case_expressed_probes_list_F<-extract_good_probe_list(Temporal_cortex_case_exprs_F, 0.7, 0.8)
+length(Temporal_cortex_case_expressed_probes_list_F)
+
+Cerebellum_control_expressed_probes_list_F<-extract_good_probe_list(Cerebellum_control_exprs_F, 0.7, 0.8)
+length(Cerebellum_control_expressed_probes_list_F)
+
+Temporal_cortex_control_expressed_probes_list_F<-extract_good_probe_list(Temporal_cortex_control_exprs_F, 0.7, 0.8)
+length(Temporal_cortex_control_expressed_probes_list_F)
+
+Cerebellum_case_expressed_probes_list_M<-extract_good_probe_list(Cerebellum_case_exprs_M, 0.7, 0.8)
+length(Cerebellum_case_expressed_probes_list_M)
+
+Temporal_cortex_case_expressed_probes_list_M<-extract_good_probe_list(Temporal_cortex_case_exprs_M, 0.7, 0.8)
+length(Temporal_cortex_case_expressed_probes_list_M)
+
+Cerebellum_control_expressed_probes_list_M<-extract_good_probe_list(Cerebellum_control_exprs_M, 0.7, 0.8)
+length(Cerebellum_control_expressed_probes_list_M)
+
+Temporal_cortex_control_expressed_probes_list_M<-extract_good_probe_list(Temporal_cortex_control_exprs_M, 0.7, 0.8)
+length(Temporal_cortex_control_expressed_probes_list_M)
+
+# merge list of good probes from both case + control + and all brain regions, sort and keep unique values
+
+Cerebellum_good_probe_list<-unique(sort(c(Cerebellum_control_expressed_probes_list_F,
+                                          Cerebellum_case_expressed_probes_list_F,
+                                          Cerebellum_control_expressed_probes_list_M,
+                                          Cerebellum_case_expressed_probes_list_M)))
+
+Temporal_cortex_good_probe_list<-unique(sort(c(Temporal_cortex_control_expressed_probes_list_F,
+                                               Temporal_cortex_case_expressed_probes_list_F,
+                                               Temporal_cortex_control_expressed_probes_list_M,
+                                               Temporal_cortex_case_expressed_probes_list_M)))
+length(Cerebellum_good_probe_list)
+length(Temporal_cortex_good_probe_list)
+
+# extract good probes from dataset
+
+Cerebellum_case_exprs_good_probes<-Cerebellum_case_exprs[rownames(Cerebellum_case_exprs)%in%Cerebellum_good_probe_list,]
+
+Temporal_cortex_case_exprs_good_probes<-Temporal_cortex_case_exprs[rownames(Temporal_cortex_case_exprs)%in%Temporal_cortex_good_probe_list,]
+
+Cerebellum_control_exprs_good_probes<-Cerebellum_control_exprs[rownames(Cerebellum_control_exprs)%in%Cerebellum_good_probe_list,]
+
+Temporal_cortex_control_exprs_good_probes<-Temporal_cortex_control_exprs[rownames(Temporal_cortex_control_exprs)%in%Temporal_cortex_good_probe_list,]
+
+Cerebellum_exprs_good_probes<-as.data.frame(t(Cerebellum_exprs[,colnames(Cerebellum_exprs)%in%Cerebellum_good_probe_list]))
+Temporal_cortex_exprs_good_probes<-as.data.frame(t(Temporal_cortex_exprs[,colnames(Temporal_cortex_exprs)%in%Temporal_cortex_good_probe_list]))
+
+# check dataframe 
+
+head(Cerebellum_case_exprs_good_probes)[1:5]
+dim(Cerebellum_case_exprs_good_probes)
+
+head(Temporal_cortex_case_exprs_good_probes)[1:5]
+dim(Temporal_cortex_case_exprs_good_probes)
+
+head(Cerebellum_control_exprs_good_probes)[1:5]
+dim(Cerebellum_control_exprs_good_probes)
+
+head(Temporal_cortex_control_exprs_good_probes)[1:5]
+dim(Temporal_cortex_control_exprs_good_probes)
+
+head(Cerebellum_exprs_good_probes)[1:5]
+dim(Cerebellum_exprs_good_probes)
+
+head(Temporal_cortex_exprs_good_probes)[1:5]
+dim(Temporal_cortex_exprs_good_probes)
+
+##### GENDER SPECIFIC PROBE PLOTS #####
+
+# using dataframe before probe removal
+
+# get gene symbol list for chip
+Gene_symbols_probes <- mappedkeys(illuminaHumanv3SYMBOL)
+
+# Convert to a list
+Gene_symbols <- as.data.frame(illuminaHumanv3SYMBOL[Gene_symbols_probes])
+
+head(Gene_symbols)
+dim(Gene_symbols)
+
+#xist gene - 
+XIST_probe_ID<-subset(Gene_symbols, symbol=="XIST")
+XIST_probe_ID
+
+PRKY_probe_ID<-subset(Gene_symbols, symbol=="PRKY")
+PRKY_probe_ID
+
+NLGN4Y_probe_ID<-subset(Gene_symbols, symbol=="NLGN4Y")
+NLGN4Y_probe_ID
+
+TMSB4Y_probe_ID<-subset(Gene_symbols, symbol=="TMSB4Y")
+TMSB4Y_probe_ID
+
+USP9Y_probe_ID<-subset(Gene_symbols, symbol=="USP9Y")
+USP9Y_probe_ID
+
+UTY_probe_ID<-subset(Gene_symbols, symbol=="UTY")
+UTY_probe_ID
+
+# merge all genes to check
+
+gene_list<-rbind(XIST_probe_ID,
+                 PRKY_probe_ID,
+                 NLGN4Y_probe_ID,
+                 TMSB4Y_probe_ID,
+                 USP9Y_probe_ID,
+                 UTY_probe_ID)
+
+gene_list
+
+#create function to plot
+plot_gender_specific_genes<-function(Expression_table, gender_info, genes_to_extract, threshold, boxplot_title){
+  #extract gene of interest
+  Expression_table_gene_check<-as.data.frame(t(Expression_table[rownames(Expression_table) %in% genes_to_extract$probe_id,]))
+  #check all probes extracted
+  print(c("all probes extracted:", dim(Expression_table_gene_check)[2]==dim(genes_to_extract)[1]))
+  # change colnames TO GENE SYMBOL using genes to extract file
+  for (x in 1:dim(Expression_table_gene_check)[2]){
+    colnames(Expression_table_gene_check)[x]<-gene_list[genes_to_extract$probe_id==colnames(Expression_table_gene_check)[x],2]
+  }
+  # add in gender information
+  Expression_table_gene_check_gender<-merge(gender_info, Expression_table_gene_check, by="row.names")
+  rownames(Expression_table_gene_check_gender)<-Expression_table_gene_check_gender$Row.names
+  Expression_table_gene_check_gender$Row.names<-NULL
+  #melt dataframe for plot
+  Expression_table_gene_check_gender_melt<-melt(Expression_table_gene_check_gender, by=Gender)
+  # calculate user defined percentie threshold
+  sample_quantiles<-apply(Expression_table, 2, quantile, probs=threshold)
+  # mean of used defined threshold across samples
+  mean_threshold=mean(sample_quantiles)
+  #plot
+  qplot(variable, value, colour=get(colnames(gender_info)), data = Expression_table_gene_check_gender_melt, geom = c("boxplot", "jitter")) + 
+    geom_hline(yintercept = mean_threshold) +
+    ggtitle(boxplot_title) +
+    labs(x="Gene",y="Expression", colour = colnames(gender_info)) 
+}
+
+# plot
+
+setwd(work_dir)
+
+dir.create(paste(work_dir,"Gender_specific_gene_plots", sep="/"))
+Gender_plots_dir=paste(work_dir,"Gender_specific_gene_plots", sep="/")
+
+setwd(Gender_plots_dir)
+
+pdf("Gender_specific_gene_plot_and_detectable_cut_off_threshold_used_09.pdf")
+plot_gender_specific_genes(Cerebellum_control_exprs, Cerebellum_gender_comparison[1], gene_list, 0.7, "Cerebellum_control_Clinical_Gender")
+plot_gender_specific_genes(Cerebellum_control_exprs, Cerebellum_gender_comparison[2], gene_list, 0.7, "Cerebellum_control_Predicted_Gender")
+plot_gender_specific_genes(Temporal_cortex_control_exprs, Temporal_cortex_gender_comparison[1], gene_list, 0.7, "Temporal_cortex_control_Clinical_Gender")
+plot_gender_specific_genes(Temporal_cortex_control_exprs, Temporal_cortex_gender_comparison[2], gene_list, 0.7, "Temporal_cortex_control_Predicted_Gender")
+plot_gender_specific_genes(Cerebellum_case_exprs, Cerebellum_gender_comparison[1], gene_list, 0.7, "Cerebellum_case_Clinical_Gender")
+plot_gender_specific_genes(Cerebellum_case_exprs, Cerebellum_gender_comparison[2], gene_list, 0.7, "Cerebellum_case_Predicted_Gender")
+plot_gender_specific_genes(Temporal_cortex_case_exprs, Temporal_cortex_gender_comparison[1], gene_list, 0.7, "Temporal_cortex_case_Clinical_Gender")
+plot_gender_specific_genes(Temporal_cortex_case_exprs, Temporal_cortex_gender_comparison[2], gene_list, 0.7, "Temporal_cortex_case_Predicted_Gender")
+dev.off()
 
 ##### PCA ####
 
@@ -195,7 +512,7 @@ anyDuplicated(colnames(Cerebellum_exprs_dataframe))
 
 # calculate pca
 
-Temporal_cortex_pca<-prcomp(Temporal_cortex_exprs_dataframe)
+Temporal_cortex_pca<-prcomp(Temporal_cortex_exprs_good_probes)
 
 # plot variance
 plot(Temporal_cortex_pca, type="l")
@@ -229,7 +546,7 @@ head(Temporal_cortex_Diagnosis)
 table(Temporal_cortex_Diagnosis)
 
 # order of samples in expression data
-Temporal_cortex_Diagnosis_temp<-colnames(Temporal_cortex_exprs_dataframe)
+Temporal_cortex_Diagnosis_temp<-colnames(Temporal_cortex_exprs_good_probes)
 
 # match order
 Temporal_cortex_Diagnosis_pca<-Temporal_cortex_Diagnosis[match(Temporal_cortex_Diagnosis_temp, rownames(Temporal_cortex_Diagnosis)),]
@@ -240,14 +557,13 @@ Temporal_cortex_Diagnosis_pca_color<-labels2colors(as.character(Temporal_cortex_
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by Disease Status",col="black", pch=21,bg=Temporal_cortex_Diagnosis_pca_color)
-legend('bottomleft', unique(Temporal_cortex_Diagnosis_pca), fill=unique(Temporal_cortex_Diagnosis_pca_color))
-
+legend('bottomright', unique(Temporal_cortex_Diagnosis_pca), fill=unique(Temporal_cortex_Diagnosis_pca_color))
 
 # CEREBEULLUM
 
 # calculate pca
 
-Cerebellum_pca<-prcomp(Cerebellum_exprs_dataframe)
+Cerebellum_pca<-prcomp(Cerebellum_exprs_good_probes)
 
 # plot variance
 plot(Cerebellum_pca, type="l")
@@ -281,7 +597,7 @@ head(Cerebellum_Diagnosis)
 table(Cerebellum_Diagnosis)
 
 # order of samples in expression data
-Cerebellum_Diagnosis_temp<-colnames(Cerebellum_exprs_dataframe)
+Cerebellum_Diagnosis_temp<-colnames(Cerebellum_exprs_good_probes)
 
 # match order
 Cerebellum_Diagnosis_pca<-Cerebellum_Diagnosis[match(Cerebellum_Diagnosis_temp, rownames(Cerebellum_Diagnosis)),]
@@ -292,7 +608,7 @@ Cerebellum_Diagnosis_pca_color<-labels2colors(as.character(Cerebellum_Diagnosis_
 
 # pca plot - color by disease - case/control
 plot(Cerebellum_pca$rotation[,1:2], main="Cerebellum PCA plot coloured by Disease Status",col="black", pch=21,bg=Cerebellum_Diagnosis_pca_color)
-legend('bottomleft', unique(Cerebellum_Diagnosis_pca), fill=unique(Cerebellum_Diagnosis_pca_color))
+legend('bottomright', unique(Cerebellum_Diagnosis_pca), fill=unique(Cerebellum_Diagnosis_pca_color))
 
 #plot to pdf
 
@@ -312,13 +628,13 @@ setwd(pca_dir)
 # match order
 Temporal_cortex_test<-Temporal_cortex_pheno[match(Temporal_cortex_Diagnosis_temp, rownames(Temporal_cortex_pheno)),]
 head(Temporal_cortex_test)
-rownames(Temporal_cortex_test)==colnames(Temporal_cortex_exprs_dataframe)
+rownames(Temporal_cortex_test)==colnames(Temporal_cortex_exprs_good_probes)
 
 pdf("Temporal_Cortex_batch_effect_PCA_plot.pdf")
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by Disease Status",col="black", pch=21,bg=Temporal_cortex_Diagnosis_pca_color)
-legend('bottomleft', unique(Temporal_cortex_Diagnosis_pca), fill=unique(Temporal_cortex_Diagnosis_pca_color))
+legend('bottomright', unique(Temporal_cortex_Diagnosis_pca), fill=unique(Temporal_cortex_Diagnosis_pca_color))
 
 
 # assign color to group
@@ -326,7 +642,7 @@ Temporal_cortex_test_pca_color<-labels2colors(as.character(Temporal_cortex_test[
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate2 samples",col="black", pch=21,bg=Temporal_cortex_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_test[,5])), fill=unique(Temporal_cortex_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_test[,5])), fill=unique(Temporal_cortex_test_pca_color))
 
 
 # assign color to group
@@ -334,7 +650,7 @@ Temporal_cortex_test_pca_color<-labels2colors(as.character(Temporal_cortex_test[
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate3 samples",col="black", pch=21,bg=Temporal_cortex_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_test[,6])), fill=unique(Temporal_cortex_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_test[,6])), fill=unique(Temporal_cortex_test_pca_color))
 
 
 # assign color to group
@@ -342,15 +658,22 @@ Temporal_cortex_test_pca_color<-labels2colors(as.character(Temporal_cortex_test[
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate4 samples",col="black", pch=21,bg=Temporal_cortex_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_test[,7])), fill=unique(Temporal_cortex_test_pca_color))
-
+legend('bottomright', as.character(unique(Temporal_cortex_test[,7])), fill=unique(Temporal_cortex_test_pca_color))
 
 # assign color to group
 Temporal_cortex_test_pca_color<-labels2colors(as.character(Temporal_cortex_test[,8]))
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate5 samples",col="black", pch=21,bg=Temporal_cortex_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_test[,8])), fill=unique(Temporal_cortex_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_test[,8])), fill=unique(Temporal_cortex_test_pca_color))
+
+# assign color to group
+Temporal_cortex_test_pca_color<-labels2colors(as.character(Temporal_cortex_test[,2]))
+
+# pca plot - color by disease - case/control
+plot(Temporal_cortex_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by gender",col="black", pch=21,bg=Temporal_cortex_test_pca_color)
+legend('bottomright', as.character(unique(Temporal_cortex_test[,2])), fill=unique(Temporal_cortex_test_pca_color))
+
 
 dev.off()
 
@@ -365,13 +688,13 @@ dev.off()
 # match order
 Cerebellum_test<-Cerebellum_pheno[match(Cerebellum_Diagnosis_temp, rownames(Cerebellum_pheno)),]
 head(Cerebellum_test)
-rownames(Cerebellum_test)==colnames(Cerebellum_exprs_dataframe)
+rownames(Cerebellum_test)==colnames(Cerebellum_exprs_good_probes)
 
 pdf("Cerebellum_batch_effect_PCA_plot.pdf")
 
 # pca plot - color by disease - case/control
 plot(Cerebellum_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by Disease Status",col="black", pch=21,bg=Cerebellum_Diagnosis_pca_color)
-legend('bottomleft', unique(Cerebellum_Diagnosis_pca), fill=unique(Cerebellum_Diagnosis_pca_color))
+legend('bottomright', unique(Cerebellum_Diagnosis_pca), fill=unique(Cerebellum_Diagnosis_pca_color))
 
 
 # assign color to group
@@ -379,7 +702,7 @@ Cerebellum_test_pca_color<-labels2colors(as.character(Cerebellum_test[,5]))
 
 # pca plot - color by disease - case/control
 plot(Cerebellum_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate0 samples",col="black", pch=21,bg=Cerebellum_test_pca_color)
-legend('bottomleft', as.character(unique(Cerebellum_test[,5])), fill=unique(Cerebellum_test_pca_color))
+legend('bottomright', as.character(unique(Cerebellum_test[,5])), fill=unique(Cerebellum_test_pca_color))
 
 
 # assign color to group
@@ -387,7 +710,7 @@ Cerebellum_test_pca_color<-labels2colors(as.character(Cerebellum_test[,6]))
 
 # pca plot - color by disease - case/control
 plot(Cerebellum_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate1 samples",col="black", pch=21,bg=Cerebellum_test_pca_color)
-legend('bottomleft', as.character(unique(Cerebellum_test[,6])), fill=unique(Cerebellum_test_pca_color))
+legend('bottomright', as.character(unique(Cerebellum_test[,6])), fill=unique(Cerebellum_test_pca_color))
 
 
 # assign color to group
@@ -395,7 +718,7 @@ Cerebellum_test_pca_color<-labels2colors(as.character(Cerebellum_test[,7]))
 
 # pca plot - color by disease - case/control
 plot(Cerebellum_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate2 samples",col="black", pch=21,bg=Cerebellum_test_pca_color)
-legend('bottomleft', as.character(unique(Cerebellum_test[,7])), fill=unique(Cerebellum_test_pca_color))
+legend('bottomright', as.character(unique(Cerebellum_test[,7])), fill=unique(Cerebellum_test_pca_color))
 
 
 # assign color to group
@@ -403,7 +726,7 @@ Cerebellum_test_pca_color<-labels2colors(as.character(Cerebellum_test[,8]))
 
 # pca plot - color by disease - case/control
 plot(Cerebellum_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate3 samples",col="black", pch=21,bg=Cerebellum_test_pca_color)
-legend('bottomleft', as.character(unique(Cerebellum_test[,8])), fill=unique(Cerebellum_test_pca_color))
+legend('bottomright', as.character(unique(Cerebellum_test[,8])), fill=unique(Cerebellum_test_pca_color))
 
 
 # assign color to group
@@ -411,91 +734,142 @@ Cerebellum_test_pca_color<-labels2colors(as.character(Cerebellum_test[,9]))
 
 # pca plot - color by disease - case/control
 plot(Cerebellum_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate4 samples",col="black", pch=21,bg=Cerebellum_test_pca_color)
-legend('bottomleft', as.character(unique(Cerebellum_test[,9])), fill=unique(Cerebellum_test_pca_color))
+legend('bottomright', as.character(unique(Cerebellum_test[,9])), fill=unique(Cerebellum_test_pca_color))
+
+# assign color to group
+Cerebellum_test_pca_color<-labels2colors(as.character(Cerebellum_test[,2]))
+
+# pca plot - color by disease - case/control
+plot(Cerebellum_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by Gender",col="black", pch=21,bg=Cerebellum_test_pca_color)
+legend('bottomright', as.character(unique(Cerebellum_test[,2])), fill=unique(Cerebellum_test_pca_color))
 
 dev.off()
 
 ##### SVA ####
 
-head(Temporal_cortex_exprs)[1:5]
+# add diagnosis in
 
-head(Temporal_cortex_pheno)
+Cerebellum_pheno
+Temporal_cortex_pheno
 
-# convert dataframe to matrix
-Temporal_cortex_exprs_matrix<-as.matrix(Temporal_cortex_exprs_dataframe)
+Cerebellum_exprs_good_probes<-merge (Cerebellum_pheno[1], t(Cerebellum_exprs_good_probes), by="row.names", all.y=T)
+rownames(Cerebellum_exprs_good_probes)<-Cerebellum_exprs_good_probes$Row.names
+Cerebellum_exprs_good_probes$Row.names<-NULL
+head(Cerebellum_exprs_good_probes)[1:5]
 
-#full model matrix for Diagnosis
-mod = model.matrix(~Diagnosis, data=Temporal_cortex_pheno)
-mod0 = model.matrix(~1, data=Temporal_cortex_pheno)
+Temporal_cortex_exprs_good_probes<-merge (Temporal_cortex_pheno[1], t(Temporal_cortex_exprs_good_probes), by="row.names", all.y=T)
+rownames(Temporal_cortex_exprs_good_probes)<-Temporal_cortex_exprs_good_probes$Row.names
+Temporal_cortex_exprs_good_probes$Row.names<-NULL
+head(Temporal_cortex_exprs_good_probes)[1:5]
 
-mod
-mod0
+# add gender in 
 
-# check number of SV in data
-n.sv<-num.sv(Temporal_cortex_exprs_matrix, mod, method="leek")
-n.sv
+Cerebellum_exprs_good_probes<-merge(Cerebellum_gender_comparison[1], Cerebellum_exprs_good_probes, by="row.names")
+rownames(Cerebellum_exprs_good_probes)<-Cerebellum_exprs_good_probes$Row.names
+Cerebellum_exprs_good_probes$Row.names<-NULL
 
-# apply sva - leave n.sv as NULL
-svobj = sva(Temporal_cortex_exprs_matrix, mod, mod0, method="two-step")
+Temporal_cortex_exprs_good_probes<-merge(Temporal_cortex_gender_comparison[1], Temporal_cortex_exprs_good_probes, by="row.names")
+rownames(Temporal_cortex_exprs_good_probes)<-Temporal_cortex_exprs_good_probes$Row.names
+Temporal_cortex_exprs_good_probes$Row.names<-NULL
 
-# adjust for sva in dataframe
-X = cbind(mod, svobj$sv)
-Hat = solve(t(X) %*% X) %*% t(X)
-beta = (Hat %*% t(Temporal_cortex_exprs_matrix))
-P = ncol(mod)
-Temporal_cortex_clean_data<-Temporal_cortex_exprs_matrix - t(as.matrix(X[,-c(1:P)]) %*% beta[-c(1:P),])
+head(Cerebellum_exprs_good_probes)[1:5]
+head(Temporal_cortex_exprs_good_probes)[1:5]
 
-#check SV in clean data - shoould be zero
-num.sv(Temporal_cortex_clean_data, mod, method="leek")
+# create sva function
 
-###
-#
-# Cerebellum
-#
-###
+check_SV_in_data<-function(dataset){
+  # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
+  sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
+  # separate expresion and pheno
+  dataset_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
+  #full model matrix for Diagnosis
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_pheno)
+  # check number of SV in data
+  num.sv(dataset_exprs, mod, method="leek")
+}
 
-head(Cerebellum_exprs)[1:5]
+# apply function
+check_SV_in_data(Cerebellum_exprs_good_probes)
+check_SV_in_data(Temporal_cortex_exprs_good_probes)
 
-head(Cerebellum_pheno)
+# create function to adjust for SV
 
-# convert dataframe to matrix
-Cerebellum_exprs_matrix<-as.matrix(Cerebellum_exprs_dataframe)
+adjust_for_sva<-function(dataset){
+  # create sva compatable matrix - sample in columns, probes in rows - pheno info seperate - sort by diagnosis 1st to keep AD top
+  sorted_by_diagnosis<-dataset[order(dataset$Diagnosis),]
+  # separate expresion and pheno
+  dataset_sva_pheno<-sorted_by_diagnosis[c(1,2)]
+  dataset_sva_exprs<-t(sorted_by_diagnosis[3:dim(sorted_by_diagnosis)[2]])
+  #full model matrix for Diagnosis
+  mod = model.matrix(~Diagnosis+Clinical_Gender, data=dataset_sva_pheno)
+  mod0 = model.matrix(~1, data=dataset_sva_pheno)
+  # number of SV
+  num.sv(dataset_sva_exprs, mod, method="leek")
+  n.sv=num.sv(dataset_sva_exprs, mod, method="leek")
+  # exit if n.sv=0
+  if(n.sv==0){stop("No Significant Variable found, exiting....")}
+  # apply sva - removed n.sv
+  svobj = sva(dataset_sva_exprs, mod, mod0, n.sv=n.sv, method="two-step")
+  # adjust for sva
+  X = cbind(mod, svobj$sv)
+  Hat = solve(t(X) %*% X) %*% t(X)
+  beta = (Hat %*% t(dataset_sva_exprs))
+  P = ncol(mod)
+  clean_data<-dataset_sva_exprs - t(as.matrix(X[,-c(1:P)]) %*% beta[-c(1:P),])
+  # merge clean data with pheno
+  clean_data_with_pheno<-merge(dataset_sva_pheno, as.data.frame(t(clean_data)), by="row.names")
+  rownames(clean_data_with_pheno)<-clean_data_with_pheno$Row.names
+  clean_data_with_pheno$Row.names<-NULL
+  # check SVA on adjusted data
+  cat("\n")
+  cat("number of surrogate variables after adjustment:")
+  cat("\n")
+  print(num.sv(clean_data, mod, method="leek"))
+  # return clean data with pheno
+  return(clean_data_with_pheno)
+}
 
-#full model matrix for Diagnosis
-mod = model.matrix(~Diagnosis, data=Cerebellum_pheno)
-mod0 = model.matrix(~1, data=Cerebellum_pheno)
+# run SVA
 
-mod
-mod0
+Temporal_cortex_exprs_good_probes_sva_adjusted<-adjust_for_sva(Temporal_cortex_exprs_good_probes)
 
-# check number of SV in data
-n.sv<-num.sv(Cerebellum_exprs_matrix, mod, method="leek")
-n.sv
+# change name
 
-# apply sva - leave n.sv as NULL
-svobj = sva(Cerebellum_exprs_matrix, mod, mod0, method="two-step")
+Cerebellum_exprs_good_probes_sva_adjusted<-Cerebellum_exprs_good_probes
 
-# adjust for sva in dataframe
-X = cbind(mod, svobj$sv)
-Hat = solve(t(X) %*% X) %*% t(X)
-beta = (Hat %*% t(Cerebellum_exprs_matrix))
-P = ncol(mod)
-Cerebellum_clean_data<-Cerebellum_exprs_matrix - t(as.matrix(X[,-c(1:P)]) %*% beta[-c(1:P),])
+# check SV again
 
-#check SV in clean data - shoould be zero
-num.sv(Cerebellum_clean_data, mod, method="leek")
+check_SV_in_data(Cerebellum_exprs_good_probes_sva_adjusted)
+check_SV_in_data(Temporal_cortex_exprs_good_probes_sva_adjusted)
+
+# remove gender
+
+Temporal_cortex_exprs_good_probes_sva_adjusted$Clinical_Gender<-NULL
+Cerebellum_exprs_good_probes_sva_adjusted$Clinical_Gender<-NULL
+
+# separate case and control
+
+Cerebellum_good_probes_sva_adjusted_case<-Cerebellum_exprs_good_probes_sva_adjusted[Cerebellum_exprs_good_probes_sva_adjusted$Diagnosis=="AD",]
+Cerebellum_good_probes_sva_adjusted_control<-Cerebellum_exprs_good_probes_sva_adjusted[Cerebellum_exprs_good_probes_sva_adjusted$Diagnosis=="Control",]
+
+dim(Cerebellum_good_probes_sva_adjusted_case)
+dim(Cerebellum_good_probes_sva_adjusted_control)
+
+Temporal_cortex_good_probes_sva_adjusted_case<-Temporal_cortex_exprs_good_probes_sva_adjusted[Temporal_cortex_exprs_good_probes_sva_adjusted$Diagnosis=="AD",]
+Temporal_cortex_good_probes_sva_adjusted_control<-Temporal_cortex_exprs_good_probes_sva_adjusted[Temporal_cortex_exprs_good_probes_sva_adjusted$Diagnosis=="Control",]
+
+dim(Temporal_cortex_good_probes_sva_adjusted_case)
+dim(Temporal_cortex_good_probes_sva_adjusted_control)
 
 ##### PLOTS AFTER SVA #####
 
 # plot density plot on clean data
-plotDensity(Temporal_cortex_clean_data,logMode=F, addLegend=F, main="Density plot of Temporal Cortex Samples after SVA" )
+plotDensity(t(as.matrix(Temporal_cortex_exprs_good_probes_sva_adjusted[2:dim(Temporal_cortex_exprs_good_probes_sva_adjusted)[1]])),logMode=F, addLegend=F, main="Density plot of Temporal Cortex Samples after SVA" )
 
 # plot PCA plot on clean data
 
-Temporal_cortex_clean_data_dataframe<-as.data.frame(Temporal_cortex_clean_data)
-head(Temporal_cortex_clean_data_dataframe)[1:5]
-
-Temporal_cortex_SVA_pca<-prcomp(Temporal_cortex_clean_data_dataframe)
+Temporal_cortex_SVA_pca<-prcomp(Temporal_cortex_exprs_good_probes_sva_adjusted[2:dim(Temporal_cortex_exprs_good_probes_sva_adjusted)[1]])
 
 # plot variance
 plot(Temporal_cortex_SVA_pca, type="l")
@@ -509,82 +883,88 @@ head(Temporal_cortex_SVA_Diagnosis)
 table(Temporal_cortex_SVA_Diagnosis)
 
 # order of samples in expression data
-Temporal_cortex_SVA_Diagnosis_temp<-colnames(Temporal_cortex_clean_data_dataframe)
+Temporal_cortex_SVA_Diagnosis_temp<-rownames(Temporal_cortex_exprs_good_probes_sva_adjusted)
 
 # match order
 Temporal_cortex_SVA_test<-Temporal_cortex_pheno[match(Temporal_cortex_SVA_Diagnosis_temp, rownames(Temporal_cortex_pheno)),]
 head(Temporal_cortex_SVA_test)
-rownames(Temporal_cortex_SVA_test)==colnames(Temporal_cortex_clean_data_dataframe)
+rownames(Temporal_cortex_SVA_test)==rownames(Temporal_cortex_exprs_good_probes_sva_adjusted)
 
 # assign color to group
 Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,1]))
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by Diagnosis samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,1])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,1])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 
 # assign color to group
 Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,5]))
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate2 samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,5])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,5])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 
 # assign color to group
 Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,6]))
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate3 samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,6])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,6])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 
 # assign color to group
 Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,7]))
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate4 samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,7])), fill=unique(Temporal_cortex_SVA_test_pca_color))
-
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,7])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 
 # assign color to group
 Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,8]))
 
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate5 samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,8])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,8])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 
 
 #plot to pdf
 setwd(pca_dir)
+
 pdf("Temporal_cortex_plots_after_SVA_adjustment.pdf")
 # assign color to group
 Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,1]))
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by Diagnosis samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,1])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,1])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate2 samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,5])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,5])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 # assign color to group
 Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,6]))
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate3 samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,6])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,6])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 # assign color to group
 Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,7]))
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate4 samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,7])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,7])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 # assign color to group
 Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,8]))
 # pca plot - color by disease - case/control
 plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate5 samples",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
-legend('bottomleft', as.character(unique(Temporal_cortex_SVA_test[,8])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,8])), fill=unique(Temporal_cortex_SVA_test_pca_color))
+# assign color to group
+Temporal_cortex_SVA_test_pca_color<-labels2colors(as.character(Temporal_cortex_SVA_test[,2]))
+# pca plot - color by disease - case/control
+plot(Temporal_cortex_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by gender",col="black", pch=21,bg=Temporal_cortex_SVA_test_pca_color)
+legend('bottomright', as.character(unique(Temporal_cortex_SVA_test[,2])), fill=unique(Temporal_cortex_SVA_test_pca_color))
 dev.off()
 
 #plot density plot
 setwd(work_dir)
+
 pdf("Temporal_Cortex_Density_plot_after_SVA.pdf")
-plotDensity(Temporal_cortex_clean_data,logMode=F, addLegend=F, main="Density plot of Temporal Cortex Samples after SVA" )
+plotDensity(t(as.matrix(Temporal_cortex_exprs_good_probes_sva_adjusted[2:dim(Temporal_cortex_exprs_good_probes_sva_adjusted)[1]])),logMode=F, addLegend=F, main="Density plot of Temporal Cortex Samples after SVA" )
 dev.off()
 
 ###
@@ -594,14 +974,11 @@ dev.off()
 ###
 
 # plot density plot on clean data
-plotDensity(Cerebellum_clean_data,logMode=F, addLegend=F, main="Density plot of Temporal Cortex Samples after SVA" )
+plotDensity(t(as.matrix(Cerebellum_exprs_good_probes_sva_adjusted[2:dim(Cerebellum_exprs_good_probes_sva_adjusted)[1]])),logMode=F, addLegend=F, main="Density plot of Temporal Cortex Samples after SVA" )
 
 # plot PCA plot on clean data
 
-Cerebellum_clean_data_dataframe<-as.data.frame(Cerebellum_clean_data)
-head(Cerebellum_clean_data_dataframe)[1:5]
-
-Cerebellum_SVA_pca<-prcomp(Cerebellum_clean_data_dataframe)
+Cerebellum_SVA_pca<-prcomp(Cerebellum_exprs_good_probes_sva_adjusted[2:dim(Cerebellum_exprs_good_probes_sva_adjusted)[1]])
 
 # plot variance
 plot(Cerebellum_SVA_pca, type="l")
@@ -615,12 +992,12 @@ head(Cerebellum_SVA_Diagnosis)
 table(Cerebellum_SVA_Diagnosis)
 
 # order of samples in expression data
-Cerebellum_SVA_Diagnosis_temp<-colnames(Cerebellum_clean_data_dataframe)
+Cerebellum_SVA_Diagnosis_temp<-rownames(Cerebellum_exprs_good_probes_sva_adjusted)
 
 # match order
 Cerebellum_SVA_test<-Cerebellum_pheno[match(Cerebellum_SVA_Diagnosis_temp, rownames(Cerebellum_pheno)),]
 head(Cerebellum_SVA_test)
-rownames(Cerebellum_SVA_test)==colnames(Cerebellum_clean_data_dataframe)
+rownames(Cerebellum_SVA_test)==rownames(Cerebellum_exprs_good_probes_sva_adjusted)
 
 # assign color to group
 Cerebellum_SVA_test_pca_color<-labels2colors(as.character(Cerebellum_SVA_test[,1]))
@@ -650,7 +1027,6 @@ Cerebellum_SVA_test_pca_color<-labels2colors(as.character(Cerebellum_SVA_test[,7
 plot(Cerebellum_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate2 samples",col="black", pch=21,bg=Cerebellum_SVA_test_pca_color)
 legend('bottomleft', as.character(unique(Cerebellum_SVA_test[,7])), fill=unique(Cerebellum_SVA_test_pca_color))
 
-
 # assign color to group
 Cerebellum_SVA_test_pca_color<-labels2colors(as.character(Cerebellum_SVA_test[,8]))
 
@@ -664,6 +1040,14 @@ Cerebellum_SVA_test_pca_color<-labels2colors(as.character(Cerebellum_SVA_test[,9
 # pca plot - color by disease - case/control
 plot(Cerebellum_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate4 samples",col="black", pch=21,bg=Cerebellum_SVA_test_pca_color)
 legend('bottomleft', as.character(unique(Cerebellum_SVA_test[,9])), fill=unique(Cerebellum_SVA_test_pca_color))
+
+# assign color to group
+Cerebellum_SVA_test_pca_color<-labels2colors(as.character(Cerebellum_SVA_test[,2]))
+
+# pca plot - color by disease - case/control
+plot(Cerebellum_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by gender",col="black", pch=21,bg=Cerebellum_SVA_test_pca_color)
+legend('bottomleft', as.character(unique(Cerebellum_SVA_test[,2])), fill=unique(Cerebellum_SVA_test_pca_color))
+
 
 #plot to pdf
 setwd(pca_dir)
@@ -696,38 +1080,27 @@ Cerebellum_SVA_test_pca_color<-labels2colors(as.character(Cerebellum_SVA_test[,9
 # pca plot - color by disease - case/control
 plot(Cerebellum_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by plate4 samples",col="black", pch=21,bg=Cerebellum_SVA_test_pca_color)
 legend('bottomleft', as.character(unique(Cerebellum_SVA_test[,9])), fill=unique(Cerebellum_SVA_test_pca_color))
+# assign color to group
+Cerebellum_SVA_test_pca_color<-labels2colors(as.character(Cerebellum_SVA_test[,2]))
+# pca plot - color by disease - case/control
+plot(Cerebellum_SVA_pca$rotation[,1:2], main="Temporal cortex PCA plot coloured by gender",col="black", pch=21,bg=Cerebellum_SVA_test_pca_color)
+legend('bottomleft', as.character(unique(Cerebellum_SVA_test[,2])), fill=unique(Cerebellum_SVA_test_pca_color))
 dev.off()
 
 #plot density plot
 setwd(work_dir)
 pdf("Cerebellum_Density_plot_after_SVA.pdf")
-plotDensity(Cerebellum_clean_data,logMode=F, addLegend=F, main="Density plot of Temporal Cortex Samples after SVA" )
+Cerebellum_SVA_pca<-prcomp(Cerebellum_exprs_good_probes_sva_adjusted[2:dim(Cerebellum_exprs_good_probes_sva_adjusted)[1]])
 dev.off()
 
-##### NETWORK ANALYSIS #####
-
-#separate case and control ID's
-
-Temporal_cortex_case_IDs<-rownames(subset(Temporal_cortex_Diagnosis, Diagnosis=="AD"))
-
-Temporal_cortex_control_IDs<-rownames(subset(Temporal_cortex_Diagnosis, Diagnosis=="Control"))
-
-length(Temporal_cortex_case_IDs)
-length(Temporal_cortex_control_IDs)
-table(Temporal_cortex_Diagnosis$Diagnosis)
-
-
-# order Diagnosis by order of expression table - from pca plot
-
-head(Temporal_cortex_clean_data_dataframe)[1:5]
-
-# match order to 
-rownames(Temporal_cortex_Diagnosis)==colnames(Temporal_cortex_clean_data_dataframe)
+##### SAMPLE NETWORK PLOT #####
 
 # sample plot function - taken from steve expression pipeline
 
-sampleNetwork_plot <- function(datExprs, diagnosis, colBy=c("chip","group") ) {
-  gp_col <- colBy
+sampleNetwork_plot <- function(dataset) {
+  datExprs<-t(dataset[2:dim(dataset)[2]])
+  diagnosis<-dataset[1]
+  gp_col <- "group"
   cat(" setting up data for qc plots","\r","\n")
   ## expression matrix and IAC
   cat(" expression matrix and IAC","\r","\n")
@@ -782,13 +1155,6 @@ sampleNetwork_plot <- function(datExprs, diagnosis, colBy=c("chip","group") ) {
   text(Z.K,labels=samle_names,cex=0.8,col=colorvec)
   abline(h=-2)
   abline(h=-3)
-  ## ClusterCoef
-  #par(mar=c(5,5,4,2))
-  #plot(Z.C,main="ClusterCoef", ylab="Z.C",xaxt="n",xlab="Sample",cex.main=1.8,cex.lab=1.4,type="n")
-  #text(Z.C,labels=samle_names,cex=0.8,col=colorvec)
-  #abline(h=-2)
-  #abline(h=-3)
-  ## Connectivity vs ClusterCoef
   par(mar=c(5,5,4,2))
   plot(Z.K,Z.C,main="Connectivity vs ClusterCoef",xlab="Z.K",ylab="Z.C",col=colorvec ,cex.main=1.8,cex.lab=1.4)
   abline(lm(Z.C~Z.K),col="black",lwd=2)
@@ -803,7 +1169,8 @@ sampleNetwork_plot <- function(datExprs, diagnosis, colBy=c("chip","group") ) {
 
 # create functio to ID outliers
 
-names_of_outliers<-function(datExprs, threshold){
+names_of_outliers<-function(dataset, threshold){
+  datExprs<-t(dataset[2:dim(dataset)[2]])
   IAC = cor(datExprs, method = "p", use = "p")
   diag(IAC) = 0
   A.IAC = ((1 + IAC)/2)^2  ## ADJACENCY MATRIX
@@ -817,47 +1184,30 @@ names_of_outliers<-function(datExprs, threshold){
   return(Z.K_outliers)
 }
 
-# run plot on full data - by Diease
+# create function to run network analysis on each expression dataset, plot and remove bad samples 
 
-sampleNetwork_plot(Temporal_cortex_clean_data_dataframe, Temporal_cortex_Diagnosis, colBy="group")
-
-# case only
-
-Temporal_cortex_clean_data_dataframe_cases<-Temporal_cortex_clean_data_dataframe[,colnames(Temporal_cortex_clean_data_dataframe)%in%Temporal_cortex_case_IDs]
-
-sampleNetwork_plot(Temporal_cortex_clean_data_dataframe_cases, subset(Temporal_cortex_Diagnosis, Diagnosis=="AD"), colBy="group")
-
-# control only
-
-Temporal_cortex_clean_data_dataframe_controls<-Temporal_cortex_clean_data_dataframe[,colnames(Temporal_cortex_clean_data_dataframe)%in%Temporal_cortex_control_IDs]
-
-sampleNetwork_plot(Temporal_cortex_clean_data_dataframe_controls, subset(Temporal_cortex_Diagnosis, Diagnosis=="Control"), colBy="group")
-
-
-# create function to run network analysis on each expression dataset, plot and remove bad samples - used Z.K value of -3 as ISA ~1
-
-run_sample_network_plot<-function(dataset, Diagnosis){
+run_sample_network_plot<-function(dataset, threshold){
   #sample network plot
-  sampleNetwork_plot(dataset, Diagnosis, colBy="group")
+  sampleNetwork_plot(dataset)
   #identify sample below Z.K -2  
-  dataset_removal_1<-names_of_outliers(dataset, -3)
+  dataset_removal_1<-names_of_outliers(dataset, threshold)
   #remove samples with ZK below -2
-  dataset_QC<-dataset[,!(colnames(dataset)%in%dataset_removal_1)]
+  dataset_QC<-dataset[!(rownames(dataset)%in%dataset_removal_1),]
   #sample network plot
-  sampleNetwork_plot(dataset_QC, Diagnosis, colBy="group")
+  sampleNetwork_plot(dataset_QC)
   #create empty count list to record samples removed
   count<-dataset_removal_1
-  # reiterate above till no samples fall below -2
+  # reiterate above till no samples fall below threshold
   while (length(dataset_removal_1)>0) {
     # remove bad samples - 1st iteration removes none
-    dataset_QC<-dataset_QC[,!(colnames(dataset_QC)%in%dataset_removal_1)]
+    dataset_QC<-dataset_QC[!(rownames(dataset_QC)%in%dataset_removal_1),]
     #identify sample below Z.K -2  
-    dataset_removal_1<-names_of_outliers(dataset_QC, -3)
+    dataset_removal_1<-names_of_outliers(dataset_QC, threshold)
     #record samples removed
     count<-c(count, dataset_removal_1)
   }
   #final network plot
-  sampleNetwork_plot(dataset_QC, Diagnosis, colBy="group")
+  sampleNetwork_plot(dataset_QC)
   # print to screen number of samples removed
   cat("\n")
   print(c("Total number of samples removed...", length(count)))
@@ -865,106 +1215,85 @@ run_sample_network_plot<-function(dataset, Diagnosis){
   return(dataset_QC)
 }
 
-# run sample plot on individual brain region by case and exclude outliers
+# run sample network on Cerebellum - rho is low, however moving Z.K to -2 removes 28 samples, and rho is still low.
 
-Temporal_cortex_clean_data_dataframe_cases_QC<-run_sample_network_plot(Temporal_cortex_clean_data_dataframe_cases, subset(Temporal_cortex_Diagnosis, Diagnosis=="AD"))
-dim(Temporal_cortex_clean_data_dataframe_cases)
-dim(Temporal_cortex_clean_data_dataframe_cases_QC)
+Cerebellum_case_exprs_good_probes_QC<-run_sample_network_plot(Cerebellum_good_probes_sva_adjusted_case, -3)
+Cerebellum_control_exprs_good_probes_QC<-run_sample_network_plot(Cerebellum_good_probes_sva_adjusted_control, -3)
 
-Temporal_cortex_clean_data_dataframe_controls_QC<-run_sample_network_plot(Temporal_cortex_clean_data_dataframe_controls, subset(Temporal_cortex_Diagnosis, Diagnosis=="Control"))
-dim(Temporal_cortex_clean_data_dataframe_controls)
-dim(Temporal_cortex_clean_data_dataframe_controls_QC)
+# run sample network on Temporal_cortex
 
-##
-#
-# Cerebellum
-#
-##
+Temporal_cortex_case_exprs_good_probes_QC<-run_sample_network_plot(Temporal_cortex_good_probes_sva_adjusted_case, -3)
+Temporal_cortex_control_exprs_good_probes_QC<-run_sample_network_plot(Temporal_cortex_good_probes_sva_adjusted_control, -3)
 
+#separate by gender - additional check to see if samples are influenced by gender
 
-#separate case and control ID's
+Cerebellum_good_probes_sva_adjusted_control_F<-Cerebellum_good_probes_sva_adjusted_control[rownames(Cerebellum_good_probes_sva_adjusted_control)%in%rownames(Cerebellum_female_samples),]
+Temporal_cortex_good_probes_sva_adjusted_control_F<-Temporal_cortex_good_probes_sva_adjusted_control[rownames(Temporal_cortex_good_probes_sva_adjusted_control)%in%rownames(Temporal_cortex_female_samples),]
 
-Cerebellum_case_IDs<-rownames(subset(Cerebellum_Diagnosis, Diagnosis=="AD"))
+Cerebellum_good_probes_sva_adjusted_case_F<-Cerebellum_good_probes_sva_adjusted_case[rownames(Cerebellum_good_probes_sva_adjusted_case)%in%rownames(Cerebellum_female_samples),]
+Temporal_cortex_good_probes_sva_adjusted_case_F<-Temporal_cortex_good_probes_sva_adjusted_case[rownames(Temporal_cortex_good_probes_sva_adjusted_case)%in%rownames(Temporal_cortex_female_samples),]
 
-Cerebellum_control_IDs<-rownames(subset(Cerebellum_Diagnosis, Diagnosis=="Control"))
+Cerebellum_good_probes_sva_adjusted_control_M<-Cerebellum_good_probes_sva_adjusted_control[rownames(Cerebellum_good_probes_sva_adjusted_control)%in%rownames(Cerebellum_male_samples),]
+Temporal_cortex_good_probes_sva_adjusted_control_M<-Temporal_cortex_good_probes_sva_adjusted_control[rownames(Temporal_cortex_good_probes_sva_adjusted_control)%in%rownames(Temporal_cortex_male_samples),]
 
-length(Cerebellum_case_IDs)
-length(Cerebellum_control_IDs)
-table(Cerebellum_Diagnosis$Diagnosis)
+Cerebellum_good_probes_sva_adjusted_case_M<-Cerebellum_good_probes_sva_adjusted_case[rownames(Cerebellum_good_probes_sva_adjusted_case)%in%rownames(Cerebellum_male_samples),]
+Temporal_cortex_good_probes_sva_adjusted_case_M<-Temporal_cortex_good_probes_sva_adjusted_case[rownames(Temporal_cortex_good_probes_sva_adjusted_case)%in%rownames(Temporal_cortex_male_samples),]
 
-# order Diagnosis by order of expression table - from pca plot
+# run sample network analysis
 
-head(Cerebellum_clean_data_dataframe)[1:5]
+Cerebellum_good_probes_sva_adjusted_control_F_QC<-run_sample_network_plot(Cerebellum_good_probes_sva_adjusted_control_F, -3)
+Cerebellum_good_probes_sva_adjusted_case_F_QC<-run_sample_network_plot(Cerebellum_good_probes_sva_adjusted_case_F, -3)
+Cerebellum_good_probes_sva_adjusted_control_M_QC<-run_sample_network_plot(Cerebellum_good_probes_sva_adjusted_control_M, -3)
+Cerebellum_good_probes_sva_adjusted_case_M_QC<-run_sample_network_plot(Cerebellum_good_probes_sva_adjusted_case_M, -3)
 
-# match order to 
-rownames(Cerebellum_Diagnosis)==colnames(Cerebellum_clean_data_dataframe)
+Temporal_cortex_good_probes_sva_adjusted_control_F_QC<-run_sample_network_plot(Temporal_cortex_good_probes_sva_adjusted_control_F, -3)
+Temporal_cortex_good_probes_sva_adjusted_case_F_QC<-run_sample_network_plot(Temporal_cortex_good_probes_sva_adjusted_case_F, -3)
+Temporal_cortex_good_probes_sva_adjusted_control_M_QC<-run_sample_network_plot(Temporal_cortex_good_probes_sva_adjusted_control_M, -3)
+Temporal_cortex_good_probes_sva_adjusted_case_M_QC<-run_sample_network_plot(Temporal_cortex_good_probes_sva_adjusted_case_M, -3)
 
-# run plot on full data - by Diease
-
-sampleNetwork_plot(Cerebellum_clean_data_dataframe, Cerebellum_Diagnosis, colBy="group")
-
-# case only
-
-Cerebellum_clean_data_dataframe_cases<-Cerebellum_clean_data_dataframe[,colnames(Cerebellum_clean_data_dataframe)%in%Cerebellum_case_IDs]
-
-sampleNetwork_plot(Cerebellum_clean_data_dataframe_cases, subset(Cerebellum_Diagnosis, Diagnosis=="AD"), colBy="group")
-
-# control only
-
-Cerebellum_clean_data_dataframe_controls<-Cerebellum_clean_data_dataframe[,colnames(Cerebellum_clean_data_dataframe)%in%Cerebellum_control_IDs]
-
-sampleNetwork_plot(Cerebellum_clean_data_dataframe_controls, subset(Cerebellum_Diagnosis, Diagnosis=="Control"), colBy="group")
-
-# run sample plot on individual brain region by case and exclude outliers
-
-Cerebellum_clean_data_dataframe_cases_QC<-run_sample_network_plot(Cerebellum_clean_data_dataframe_cases, subset(Cerebellum_Diagnosis, Diagnosis=="AD"))
-dim(Cerebellum_clean_data_dataframe_cases)
-dim(Cerebellum_clean_data_dataframe_cases_QC)
-
-Cerebellum_clean_data_dataframe_controls_QC<-run_sample_network_plot(Cerebellum_clean_data_dataframe_controls, subset(Cerebellum_Diagnosis, Diagnosis=="Control"))
-dim(Cerebellum_clean_data_dataframe_controls)
-dim(Cerebellum_clean_data_dataframe_controls_QC)
-
-# plot to PDF
+##### PLOT SAMPLE NETWORK ANALYSIS TO PDF #####
 
 setwd(sample_network_dir)
 
-pdf("Netowrk_Anlaysis_on_Temporal_Cortex_Cases.pdf")
-Temporal_cortex_clean_data_dataframe_cases_QC<-run_sample_network_plot(Temporal_cortex_clean_data_dataframe_cases, subset(Temporal_cortex_Diagnosis, Diagnosis=="AD"))
+pdf("Cerebellum_CA1_case_sample_network_analysis.pdf")
+Cerebellum_case_exprs_good_probes_QC<-run_sample_network_plot(Cerebellum_good_probes_sva_adjusted_case, -3)
 dev.off()
 
-pdf("Netowrk_Anlaysis_on_Temporal_Cortex_Controls.pdf")
-Temporal_cortex_clean_data_dataframe_controls_QC<-run_sample_network_plot(Temporal_cortex_clean_data_dataframe_controls, subset(Temporal_cortex_Diagnosis, Diagnosis=="Control"))
+pdf("Cerebellum_CA1_control_sample_network_analysis.pdf")
+Cerebellum_control_exprs_good_probes_QC<-run_sample_network_plot(Cerebellum_good_probes_sva_adjusted_control, -3)
 dev.off()
 
-pdf("Netowrk_Anlaysis_on_Cerebellum_Cases.pdf")
-Cerebellum_clean_data_dataframe_cases_QC<-run_sample_network_plot(Cerebellum_clean_data_dataframe_cases, subset(Cerebellum_Diagnosis, Diagnosis=="AD"))
+pdf("Temporal_cortex_case_sample_network_analysis.pdf")
+Temporal_cortex_case_exprs_good_probes_QC<-run_sample_network_plot(Temporal_cortex_good_probes_sva_adjusted_case, -3)
 dev.off()
 
-pdf("Netowrk_Anlaysis_on_Cerebellum_Control.pdf")
-Cerebellum_clean_data_dataframe_controls_QC<-run_sample_network_plot(Cerebellum_clean_data_dataframe_controls, subset(Cerebellum_Diagnosis, Diagnosis=="Control"))
+pdf("Temporal_cortex_control_sample_network_analysis.pdf")
+Temporal_cortex_control_exprs_good_probes_QC<-run_sample_network_plot(Temporal_cortex_good_probes_sva_adjusted_control, -3)
 dev.off()
 
 ##### CREATE QC'd DATASET #####
 
-Temporal_cortex_good_sample_ID<-c(colnames(Temporal_cortex_clean_data_dataframe_cases_QC),
-                                  colnames(Temporal_cortex_clean_data_dataframe_controls_QC))
+Temporal_cortex_good_sample_ID<-c(rownames(Temporal_cortex_case_exprs_good_probes_QC),
+                                  rownames(Temporal_cortex_control_exprs_good_probes_QC))
 
-Cerebellum_good_sample_ID<-c(colnames(Cerebellum_clean_data_dataframe_cases_QC),
-                             colnames(Cerebellum_clean_data_dataframe_controls_QC))
+Cerebellum_good_sample_ID<-c(rownames(Cerebellum_case_exprs_good_probes_QC),
+                             rownames(Cerebellum_control_exprs_good_probes_QC))
 
-Temporal_cortex_QCd<-Temporal_cortex_clean_data_dataframe[,colnames(Temporal_cortex_clean_data_dataframe)%in%Temporal_cortex_good_sample_ID]
-dim(Temporal_cortex_clean_data_dataframe)
+Temporal_cortex_QCd<-Temporal_cortex_exprs_good_probes_sva_adjusted[rownames(Temporal_cortex_exprs_good_probes_sva_adjusted)%in%Temporal_cortex_good_sample_ID,]
+dim(Temporal_cortex_exprs_good_probes_sva_adjusted)
 dim(Temporal_cortex_QCd)
 
-Cerebellum_QCd<-Cerebellum_clean_data_dataframe[,colnames(Cerebellum_clean_data_dataframe)%in%Cerebellum_good_sample_ID]
-dim(Cerebellum_clean_data_dataframe)
+Cerebellum_QCd<-Cerebellum_exprs_good_probes_sva_adjusted[rownames(Cerebellum_exprs_good_probes_sva_adjusted)%in%Cerebellum_good_sample_ID,]
+dim(Cerebellum_exprs_good_probes_sva_adjusted)
 dim(Cerebellum_QCd)
 
-##### CONVERT PROBE ID TO ENTREZ ID #####
+# remove gender and diagnosis
 
-#check probes same in both datasets
-any(rownames(Temporal_cortex_QCd)==rownames(Cerebellum_QCd))=="FLASE"
+Temporal_cortex_QCd$Clinical_Gender<-NULL
+Temporal_cortex_QCd$Diagnosis<-NULL
+
+Cerebellum_QCd$Clinical_Gender<-NULL
+Cerebellum_QCd$Diagnosis<-NULL
 
 ##### CONVERT PROBE ID TO ENTREZ ID #####
 
@@ -990,7 +1319,7 @@ anyDuplicated(illuminaHumanv3.db_mapping$entrezgene)
 
 convert_probe_id_to_entrez_id <- function(expression_dataset, probe_mapping_file){
   # transform dataset
-  expression_dataset_t<-as.data.frame(t(expression_dataset))
+  expression_dataset_t<-as.data.frame(expression_dataset)
   # keep only probes which appear in probe_mapping_file
   data_frame_in_probe_mapper<-expression_dataset_t[colnames(expression_dataset_t)%in%probe_mapping_file$probe_id]
   # match probe id in data_frame_in_probe_mapper to that in probe_mapping_file and convert to entrez id
@@ -1016,7 +1345,7 @@ length(which(duplicated(colnames(Cerebellum_QCd_entrez_id))))
 
 head(Cerebellum_QCd_entrez_id[100:110])
 
-##### COLLAPSE MULTIPPLE ENTREZ ID BY SELECTING ONE WITH HIGHEST AVERAGE EXPRESSION ACROSS SAMPLES ######
+##### COLLAPSE MULTIPLE ENTREZ ID BY SELECTING ONE WITH HIGHEST AVERAGE EXPRESSION ACROSS SAMPLES ######
 
 ## create function
 
@@ -1078,10 +1407,21 @@ Cerebellum_pheno_to_attach<-Cerebellum_pheno_to_attach[1:8]
 
 head(Cerebellum_pheno_to_attach)
 
-# arrange in order of
+# attach predicted gender
 
-Cerebellum_pheno_to_attach<-Cerebellum_pheno_to_attach[c(5,6,2,7,1,8,3,4)]
-head(Cerebellum_pheno_to_attach)
+Cerebellum_pheno_to_attach<-merge(Cerebellum_pheno_to_attach, Cerebellum_gender_comparison[2], by="row.names")
+rownames(Cerebellum_pheno_to_attach)<-Cerebellum_pheno_to_attach$Row.names
+Cerebellum_pheno_to_attach$Row.names<-NULL
+
+# change gender to clinical gender
+colnames(Cerebellum_pheno_to_attach)[2]<-"Clinical_Gender"
+
+# order pheno information
+
+Cerebellum_pheno_to_attach<-Cerebellum_pheno_to_attach[,order(names(Cerebellum_pheno_to_attach), decreasing = T)]
+
+# should be 9 colnames - Diagnosis", "Tissue", "Age", "Clinical_Gender", "Predicted_Gender", "MMSE", "BRAAK", "APOE", "Diagnosis_sub_cat"
+colnames(Cerebellum_pheno_to_attach)
 
 # same for temporal cortex
 
@@ -1098,26 +1438,25 @@ Temporal_cortex_pheno_to_attach<-Temporal_cortex_pheno_to_attach[1:8]
 
 head(Temporal_cortex_pheno_to_attach)
 
-# arrange in order of
+# attach predicted gender
 
-Temporal_cortex_pheno_to_attach<-Temporal_cortex_pheno_to_attach[c(5,6,2,7,1,8,3,4)]
-head(Temporal_cortex_pheno_to_attach)
+Temporal_cortex_pheno_to_attach<-merge(Temporal_cortex_pheno_to_attach, Temporal_cortex_gender_comparison[2], by="row.names")
+rownames(Temporal_cortex_pheno_to_attach)<-Temporal_cortex_pheno_to_attach$Row.names
+Temporal_cortex_pheno_to_attach$Row.names<-NULL
 
-#subset phenotype to samples in Temporal_cortex_QCd_entrez_id_unique
-dim(Temporal_cortex_pheno_to_attach)
-Temporal_cortex_pheno_to_attach<-subset(Temporal_cortex_pheno_to_attach, rownames(Temporal_cortex_pheno_to_attach) %in% rownames(Temporal_cortex_QCd_entrez_id_unique))
-dim(Temporal_cortex_pheno_to_attach)
-dim(Temporal_cortex_QCd_entrez_id_unique)
+# change gender to clinical gender
+colnames(Temporal_cortex_pheno_to_attach)[2]<-"Clinical_Gender"
 
-#subset phenotype to samples in Cerebellum_QCd_entrez_id_unique
-dim(Cerebellum_pheno_to_attach)
-Cerebellum_pheno_to_attach<-subset(Cerebellum_pheno_to_attach, rownames(Cerebellum_pheno_to_attach) %in% rownames(Cerebellum_QCd_entrez_id_unique))
-dim(Cerebellum_pheno_to_attach)
-dim(Cerebellum_QCd_entrez_id_unique)
+# order pheno information
 
-# merge Temporal_cortex pheno info with expr
+Temporal_cortex_pheno_to_attach<-Temporal_cortex_pheno_to_attach[,order(names(Temporal_cortex_pheno_to_attach), decreasing = T)]
 
-Temporal_cortex_QCd_entrez_id_unique_pheno<-merge(Temporal_cortex_pheno_to_attach, Temporal_cortex_QCd_entrez_id_unique, by="row.names", all.x=T)
+# should be 9 colnames - Diagnosis", "Tissue", "Age", "Clinical_Gender", "Predicted_Gender", "MMSE", "BRAAK", "APOE", "Diagnosis_sub_cat"
+colnames(Temporal_cortex_pheno_to_attach)
+
+# # merge Temporal_cortex pheno info with expr
+
+Temporal_cortex_QCd_entrez_id_unique_pheno<-merge(Temporal_cortex_pheno_to_attach, Temporal_cortex_QCd_entrez_id_unique, by="row.names")
 head(Temporal_cortex_QCd_entrez_id_unique_pheno)[1:5]
 rownames(Temporal_cortex_QCd_entrez_id_unique_pheno)<-Temporal_cortex_QCd_entrez_id_unique_pheno$Row.names
 Temporal_cortex_QCd_entrez_id_unique_pheno$Row.names<-NULL
@@ -1128,7 +1467,7 @@ dim(Temporal_cortex_QCd_entrez_id_unique_pheno)
 
 # merge Cerebellum pheno info with expr
 
-Cerebellum_QCd_entrez_id_unique_pheno<-merge(Cerebellum_pheno_to_attach, Cerebellum_QCd_entrez_id_unique, by="row.names", all.x=T)
+Cerebellum_QCd_entrez_id_unique_pheno<-merge(Cerebellum_pheno_to_attach, Cerebellum_QCd_entrez_id_unique, by="row.names")
 head(Cerebellum_QCd_entrez_id_unique_pheno)[1:5]
 rownames(Cerebellum_QCd_entrez_id_unique_pheno)<-Cerebellum_QCd_entrez_id_unique_pheno$Row.names
 Cerebellum_QCd_entrez_id_unique_pheno$Row.names<-NULL
@@ -1144,8 +1483,19 @@ setwd(clean_data_dir)
 write.table(Temporal_cortex_QCd_entrez_id_unique_pheno, file="AMP_MayoeGWAS_Temporal_Cortex_pre-processed_data2.txt", sep="\t")
 write.table(Cerebellum_QCd_entrez_id_unique_pheno, file="AMP_MayoeGWAS_Cerebellum_pre-processed_data2.txt", sep="\t")
 
+##### WRITE LIST OF CONTROL GENES EXPRESSED #####
+
+setwd("/media/hamel/1TB/Projects/Brain_expression/2.Expression_across_brain_regions_in_control_datasets/1.Data")
+
+write(unique(sort(c(Cerebellum_control_expressed_probes_list_F, 
+                    Cerebellum_control_expressed_probes_list_M))), file="AMP_MayoeGWAS_Cerebellum.txt")
+
+write(unique(sort(c(Temporal_cortex_control_expressed_probes_list_F, 
+                    Temporal_cortex_control_expressed_probes_list_M))), file="AMP_MayoeGWAS_Temporal_Cortex.txt")
+
 ##### SAVE IMAGE #####
 
 setwd(work_dir)
 
 save.image(file="AMP_MayoeGWAS_data_processing2.Rdata")
+
