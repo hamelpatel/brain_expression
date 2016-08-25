@@ -18,6 +18,8 @@
 ##
 ##
 ## NOTE: latest gene set files files can be downloaded from http://software.broadinstitute.org/gsea/downloads.jsp
+## Temporal lobe had to be partially run on cluster due to lack of ram. - only run with ind.tail="high" as "low" give 0.99 cor
+##
 #####
 
 ##### SET PARAMETERS #####
@@ -36,17 +38,25 @@ setwd(work_dir)
 
 # create dir DE and patway analysis
 
+# DE directory
 dir.create(paste(work_dir,"Meta_DE", sep="/"))
-
 Meta_DE_dir=paste(work_dir,"Meta_DE", sep="/")
 
+# Pathway analysis directory
 dir.create(paste(work_dir,"Meta_Pathway", sep="/"))
-
 Meta_Pathway_dir=paste(work_dir,"Meta_Pathway", sep="/")
 
+# QC plots
 dir.create(paste(work_dir,"MetaQC_plots", sep="/"))
-
 MetaQC_plots_dir=paste(work_dir,"MetaQC_plots", sep="/")
+
+# data in metomics format
+dir.create(paste(work_dir, "Data_in_metaomics_format", sep="/"))
+Data_in_metaomics_format=paste(work_dir, "Data_in_metaomics_format", sep="/")
+
+# DE heatmaps
+dir.create(paste(Meta_DE_dir,"DE_Heatmaps", sep="/"))
+DE_Heamaps_dir=paste(Meta_DE_dir,"DE_Heatmaps", sep="/")
 
 ##### LOAD LIBRARIES ####
 
@@ -62,6 +72,7 @@ library(MetaPCA)
 library(org.Hs.eg.db)
 library(dplyr)
 library(knitr)
+library(GSEABase)
 
 ##### READ DATA - 11 datasets #####
 
@@ -348,11 +359,6 @@ inhouse_data_Cerebellum_MetaOmics_format<-convert_data_to_MetaOmics_format(inhou
 AMP_MAYOeGWAS_Cerebellum_MetaOmics_format<-convert_data_to_MetaOmics_format(AMP_MAYOeGWAS_Cerebellum)
 
 # write out dataframe - ***NEED To CONVERT TO THIS FORMAT IN R
-
-#create directory
-dir.create(paste(work_dir, "Data_in_metaomics_format", sep="/"))
-
-Data_in_metaomics_format=paste(work_dir, "Data_in_metaomics_format", sep="/")
 
 setwd(Data_in_metaomics_format)
 
@@ -886,6 +892,586 @@ mtext("Temporal Lobe Datasets (NO AMP)", cex=2, line = 1.5)
 dev.off()
 
 setwd(work_dir)
+
+##### RE-CREATE FILTERED OBJECT AFTER STUDY REMOVAL #####
+
+#create function to create QC'd object - removing unwanted datasets
+create_QC_object<-function(datasets, MVperc, gene_filter){ 
+  #datasets = list of dataset names, 
+  #MVperv = merge by common probes, 0=100% common, 0.8=20% common
+  #gene_filter = i.e c(0.3, 0.3) filter out 30% un-expressed genes and then 30% non-informative genes across datasets, 
+  #number of datasets
+  number_of_datasets<-length(datasets) 
+  
+  #setwd to data
+  setwd(Data_in_metaomics_format)
+  
+  #read in raw data
+  raw_data<-MetaDE.Read(datasets,
+                        via="txt", # txt format
+                        skip=rep(1,number_of_datasets), # skip 1 row for all datasets
+                        log=T, # data is log transformed
+                        matched=F) # matched format false - i.e need to match entrez id to gene symbol
+  
+  #setwd to work dir
+  setwd(work_dir)
+  # map gene symbol to entrez id - frontal lobe
+  raw_data_GS<-MetaDE.match(raw_data, pool.replicate="IQR")
+  
+  # merge by common probes, 0=100% common, 0.8=20% common
+  raw_data_GS_merged<-MetaDE.merge(raw_data_GS, MVperc=MVperc)
+  print(paste("number of genes after merging: ", dim(raw_data_GS_merged[[1]][[1]])[1]), sep=" ")
+  
+  # gene_filter = i.e c(0.3, 0.3) filter out 30% un-expressed genes and then 30% non-informative genes across datasets, 
+  raw_data_GS_merged_Filtered<-MetaDE.filter(raw_data_GS_merged, gene_filter) 
+  print(paste("number of genes after filtering un-expressed and non-informative genes: ",dim(raw_data_GS_merged_Filtered[[1]][[1]])[1]), sep=" ")
+  return(raw_data_GS_merged_Filtered)
+}
+
+#apply function to each brain region - no merge by common probe and no filtering of probes
+
+Frontal_lobe_no_AMP_QC_filtered<-create_QC_object(datasets=c("E_GEOD_36980_Frontal_Cortex_MetaOmics_format", 
+                                                             "E_GEOD_48350_Superior_Frontal_Gyrus_MetaOmics_format", 
+                                                             "E_GEOD_5281_Superior_Frontal_Gyrus_MetaOmics_format", 
+                                                             "inhouse_data_Frontal_Cortex_MetaOmics_format"),
+                                                  MVperc=0.8,
+                                                  gene_filter=c(0,0))
+
+Parietal_lobe_no_AMP_QC_filtered<-create_QC_object(datasets=c("E_GEOD_48350_Postcentral_Gyrus_MetaOmics_format", 
+                                                              "E_GEOD_5281_Posterior_Singulate_MetaOmics_format"),
+                                                   MVperc=0.8,
+                                                   gene_filter=c(0,0))
+
+
+Temporal_lobe_no_AMP_QC_filtered<-create_QC_object(datasets=c("E_GEOD_28146_Hippocampus_CA1_MetaOmics_format", 
+                                                              "E_GEOD_29378_Hippocampus_CA1_MetaOmics_format", 
+                                                              "E_GEOD_29378_Hippocampus_CA3_MetaOmics_format", 
+                                                              "E_GEOD_36980_Hippocampus_MetaOmics_format", 
+                                                              "E_GEOD_36980_Temporal_Cortex_MetaOmics_format", 
+                                                              "E_GEOD_48350_Entorhinal_Cortex_MetaOmics_format", 
+                                                              "E_GEOD_48350_Hippocampus_MetaOmics_format", 
+                                                              "E_GEOD_1297_Hippocampus_MetaOmics_format", 
+                                                              "E_GEOD_5281_Entorhinal_Cortex_MetaOmics_format", 
+                                                              "E_GEOD_5281_Hippocampus_CA1_MetaOmics_format", 
+                                                              "E_GEOD_5281_Medial_Temporal_Gyrus_MetaOmics_format", 
+                                                              "inhouse_data_Entorhinal_Cortex_MetaOmics_format", 
+                                                              "inhouse_data_Temporal_Cortex_MetaOmics_format",
+                                                              "AMP_MAYOeGWAS_Temporal_Cortex_MetaOmics_format"),
+                                                   MVperc=0.8,
+                                                   gene_filter=c(0,0))
+
+Cerebellum_no_AMP_QC_filtered<-create_QC_object(datasets=c("inhouse_data_Cerebellum_MetaOmics_format", 
+                                                           "AMP_MAYOeGWAS_Cerebellum_MetaOmics_format"),
+                                                MVperc=0.8,
+                                                gene_filter=c(0,0))
+
+##### META - DE ANALYSIS UPREGULATED #####
+
+# Frontal Lobe
+Frontal_lobe_DE_up<-MetaDE.rawdata(Frontal_lobe_no_AMP_QC_filtered,
+                                   ind.method = rep("modt", length(names(Frontal_lobe_no_AMP_QC_filtered))),# moderate t-test - same as limma
+                                   meta.method=c("AW.OC", "maxP.OC", "minP.OC", "Fisher.OC"),
+                                   nperm=300,
+                                   miss.tol=0,
+                                   ind.tail="high")
+
+tail(Frontal_lobe_DE_up$meta.analysis$stat)
+tail(Frontal_lobe_DE_up$meta.analysis$FDR)
+tail(Frontal_lobe_DE_up$meta.analysis$AW.weight)
+tail(Frontal_lobe_DE_up$meta.analysis$pval)
+
+#Parietal Lobe
+Parietal_lobe_DE_up<-MetaDE.rawdata(Parietal_lobe_no_AMP_QC_filtered,
+                                    ind.method = rep("modt", length(names(Parietal_lobe_no_AMP_QC_filtered))),# moderate t-test - same as limma
+                                    meta.method=c("AW.OC", "maxP.OC", "minP.OC", "Fisher.OC"),
+                                    nperm=300,
+                                    miss.tol=0,
+                                    ind.tail="high")
+
+tail(Parietal_lobe_DE_up$meta.analysis$stat)
+tail(Parietal_lobe_DE_up$meta.analysis$FDR)
+tail(Parietal_lobe_DE_up$meta.analysis$AW.weight)
+tail(Parietal_lobe_DE_up$meta.analysis$pval)
+
+#Cerebellum
+Cerebellum_DE_up<-MetaDE.rawdata(Cerebellum_no_AMP_QC_filtered,
+                                 ind.method = rep("modt", length(names(Cerebellum_no_AMP_QC_filtered))),# moderate t-test - same as limma
+                                 meta.method=c("AW.OC", "maxP.OC", "minP.OC", "Fisher.OC"),
+                                 nperm=300,
+                                 miss.tol=0,
+                                 ind.tail="high")
+
+tail(Cerebellum_DE_up$meta.analysis$stat)
+tail(Cerebellum_DE_up$meta.analysis$FDR)
+tail(Cerebellum_DE_up$meta.analysis$AW.weight)
+tail(Cerebellum_DE_up$meta.analysis$pval)
+
+# #Temporal - requires 251.1G
+# Temporal_lobe_DE_up<-MetaDE.rawdata(Temporal_lobe_no_AMP_QC_filtered,
+#                                     ind.method = rep("modt", length(names(Temporal_lobe_no_AMP_QC_filtered))),# moderate t-test - same as limma
+#                                     meta.method=c("AW.OC", "maxP.OC", "minP.OC", "Fisher.OC"),
+#                                     nperm=20,
+#                                     miss.tol=0,
+#                                     ind.tail="high")
+
+# # temporal lobe fails to aquire 251 ram reqiured - save and run on cluster
+# # setwd(work_dir)
+# # save(Temporal_lobe_no_AMP_QC_filtered, file="Temporal_lobe_no_AMP_QC_filtered.Rdata")
+
+#read in  temporal DE run on cluster
+
+load("Meta_DE/Temporal_lobe_run_on_cluster/Temporal_lobe_DE_up.Rdata")
+
+tail(Temporal_lobe_DE_up$meta.analysis$stat)
+tail(Temporal_lobe_DE_up$meta.analysis$FDR)
+tail(Temporal_lobe_DE_up$meta.analysis$AW.weight)
+tail(Temporal_lobe_DE_up$meta.analysis$pval)
+
+##### META - DE ANALYSIS DOWN-REGULATED #####
+
+# Frontal Lobe
+Frontal_lobe_DE_down<-MetaDE.rawdata(Frontal_lobe_no_AMP_QC_filtered,
+                                     ind.method = rep("modt", length(names(Frontal_lobe_no_AMP_QC_filtered))),# moderate t-test - same as limma
+                                     meta.method=c("AW.OC", "maxP.OC", "minP.OC", "Fisher.OC"),
+                                     nperm=300,
+                                     miss.tol=0,
+                                     ind.tail="low")
+
+tail(Frontal_lobe_DE_down$meta.analysis$stat)
+tail(Frontal_lobe_DE_down$meta.analysis$FDR)
+tail(Frontal_lobe_DE_down$meta.analysis$AW.weight)
+tail(Frontal_lobe_DE_down$meta.analysis$pval)
+
+#Parietal Lobe
+Parietal_lobe_DE_down<-MetaDE.rawdata(Parietal_lobe_no_AMP_QC_filtered,
+                                      ind.method = rep("modt", length(names(Parietal_lobe_no_AMP_QC_filtered))),# moderate t-test - same as limma
+                                      meta.method=c("AW.OC", "maxP.OC", "minP.OC", "Fisher.OC"),
+                                      nperm=300,
+                                      miss.tol=0,
+                                      ind.tail="low")
+
+tail(Parietal_lobe_DE_down$meta.analysis$stat)
+tail(Parietal_lobe_DE_down$meta.analysis$FDR)
+tail(Parietal_lobe_DE_down$meta.analysis$AW.weight)
+tail(Parietal_lobe_DE_down$meta.analysis$pval)
+
+#Temporal - requires 251.1G
+# Temporal_lobe_DE_down<-MetaDE.rawdata(Temporal_lobe_no_AMP_QC_filtered,
+#                                       ind.method = rep("modt", length(names(Temporal_lobe_no_AMP_QC_filtered))),# moderate t-test - same as limma
+#                                       meta.method=c("AW.OC", "maxP.OC", "minP.OC", "Fisher.OC"),
+#                                       nperm=300,
+#                                       miss.tol=0,
+#                                       ind.tail="low")
+# 
+# head(Temporal_lobe_DE_down$meta.analysis$stat)
+# head(Temporal_lobe_DE_down$meta.analysis$FDR)
+# head(Temporal_lobe_DE_down$meta.analysis$AW.weight)
+# head(Temporal_lobe_DE_down$meta.analysis$pval)
+
+#Cerebellum
+Cerebellum_DE_down<-MetaDE.rawdata(Cerebellum_no_AMP_QC_filtered,
+                                   ind.method = rep("modt", length(names(Cerebellum_no_AMP_QC_filtered))),# moderate t-test - same as limma
+                                   meta.method=c("AW.OC", "maxP.OC", "minP.OC", "Fisher.OC"),
+                                   nperm=300,
+                                   miss.tol=0,
+                                   ind.tail="low")
+
+tail(Cerebellum_DE_down$meta.analysis$stat)
+tail(Cerebellum_DE_down$meta.analysis$FDR)
+tail(Cerebellum_DE_down$meta.analysis$AW.weight)
+tail(Cerebellum_DE_down$meta.analysis$pval)
+
+##### CALCULATE EFFECT SIZE - META #####
+
+#This functions is used to calculate the effect size, standardized mean difference
+#the p-values are calculated using parametric method by assupming the z-scores following a standard normal distribution
+
+#Frontal Lobe - calculate for individual an then meta - nested
+Frontal_lobe_DE_ES<-MetaDE.ES(ind.cal.ES(Frontal_lobe_no_AMP_QC_filtered,
+                                         paired=rep(F, length(names(Frontal_lobe_no_AMP_QC_filtered))),
+                                         nperm=300,
+                                         miss.tol=0),
+                              meta.method="REM")
+
+head(Frontal_lobe_DE_ES$pval)
+tail(Frontal_lobe_DE_ES$pval)
+
+
+#Parietal Lobe
+Parietal_lobe_DE_ES<-MetaDE.ES(ind.cal.ES(Parietal_lobe_no_AMP_QC_filtered,
+                                          paired=rep(F, length(names(Parietal_lobe_no_AMP_QC_filtered))),
+                                          nperm=300,
+                                          miss.tol=0),
+                               meta.method="REM")
+
+head(Parietal_lobe_DE_ES$pval)
+tail(Parietal_lobe_DE_ES$pval)
+
+#Temporal Lobe
+Temporal_lobe_DE_ES<-MetaDE.ES(ind.cal.ES(Temporal_lobe_no_AMP_QC_filtered,
+                                          paired=rep(F, length(names(Temporal_lobe_no_AMP_QC_filtered))),
+                                          nperm=300,
+                                          miss.tol=0),
+                               meta.method="REM")
+
+head(Temporal_lobe_DE_ES$pval)
+tail(Temporal_lobe_DE_ES$pval)
+
+#Cerebellum
+Cerebellum_DE_ES<-MetaDE.ES(ind.cal.ES(Cerebellum_no_AMP_QC_filtered,
+                                       paired=rep(F, length(names(Cerebellum_no_AMP_QC_filtered))),
+                                       nperm=300,
+                                       miss.tol=0),
+                            meta.method="REM")
+
+head(Cerebellum_DE_ES$pval)
+tail(Cerebellum_DE_ES$pval)
+
+##### HEATMAP #####
+
+# meta DE analysis done using "AW.OC", "maxP.OC", "minP.OC", "Fisher.OC". plot heat map for each method
+setwd(DE_Heamaps_dir)
+
+pdf("Frontal_Lobe_DE_heatmaps.pdf")
+heatmap.sig.genes(Frontal_lobe_DE_up, meta.method="AW.OC", fdr.cut=0.05, color="GR")
+mtext("Frontal Lobe AW.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Frontal_lobe_DE_up, meta.method="maxP.OC", fdr.cut=0.05, color="GR")
+mtext("Frontal Lobe maxP.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Frontal_lobe_DE_up, meta.method="minP.OC", fdr.cut=0.05, color="GR")
+mtext("Frontal Lobe minP.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Frontal_lobe_DE_up, meta.method="Fisher.OC", fdr.cut=0.05, color="GR")
+mtext("Frontal Lobe Fisher.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Frontal_lobe_DE_down, meta.method="AW.OC", fdr.cut=0.05, color="GR")
+mtext("Frontal Lobe AW.OC DEG DOWN", line = 1.5)
+
+heatmap.sig.genes(Frontal_lobe_DE_down, meta.method="maxP.OC", fdr.cut=0.05, color="GR")
+mtext("Frontal Lobe maxP.OC DEG DOWN", line = 1.5)
+
+heatmap.sig.genes(Frontal_lobe_DE_down, meta.method="minP.OC", fdr.cut=0.05, color="GR")
+mtext("Frontal Lobe minP.OC DEG DOWN", line = 1.5)
+
+heatmap.sig.genes(Frontal_lobe_DE_down, meta.method="Fisher.OC", fdr.cut=0.05, color="GR")
+mtext("Frontal Lobe Fisher.OC DEG DOWN", line = 1.5)
+dev.off()
+
+#parietal lobe
+pdf("Parietal_Lobe_DE_heatmaps.pdf")
+heatmap.sig.genes(Parietal_lobe_DE_up, meta.method="AW.OC", fdr.cut=0.05, color="GR")
+mtext("Parietal Lobe AW.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Parietal_lobe_DE_up, meta.method="maxP.OC", fdr.cut=0.05, color="GR")
+mtext("Parietal Lobe maxP.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Parietal_lobe_DE_up, meta.method="minP.OC", fdr.cut=0.05, color="GR")
+mtext("Parietal Lobe minP.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Parietal_lobe_DE_up, meta.method="Fisher.OC", fdr.cut=0.05, color="GR")
+mtext("Parietal Lobe Fisher.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Parietal_lobe_DE_down, meta.method="AW.OC", fdr.cut=0.05, color="GR")
+mtext("Parietal Lobe AW.OC DEG DOWN", line = 1.5)
+
+heatmap.sig.genes(Parietal_lobe_DE_down, meta.method="maxP.OC", fdr.cut=0.05, color="GR")
+mtext("Parietal Lobe maxP.OC DEG DOWN", line = 1.5)
+
+heatmap.sig.genes(Parietal_lobe_DE_down, meta.method="minP.OC", fdr.cut=0.05, color="GR")
+mtext("Parietal Lobe minP.OC DEG DOWN", line = 1.5)
+
+heatmap.sig.genes(Parietal_lobe_DE_down, meta.method="Fisher.OC", fdr.cut=0.05, color="GR")
+mtext("Parietal Lobe Fisher.OC DEG DOWN", line = 1.5)
+dev.off()
+
+# cerebellum
+pdf("Cerebellum_DE_heatmaps.pdf")
+heatmap.sig.genes(Cerebellum_DE_up, meta.method="AW.OC", fdr.cut=0.05, color="GR")
+mtext("Cerebellum AW.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Cerebellum_DE_up, meta.method="maxP.OC", fdr.cut=0.05, color="GR")
+mtext("Cerebellum maxP.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Cerebellum_DE_up, meta.method="minP.OC", fdr.cut=0.05, color="GR")
+mtext("Cerebellum minP.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Cerebellum_DE_up, meta.method="Fisher.OC", fdr.cut=0.05, color="GR")
+mtext("Cerebellum Fisher.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Cerebellum_DE_down, meta.method="AW.OC", fdr.cut=0.05, color="GR")
+mtext("Cerebellum AW.OC DEG DOWN", line = 1.5)
+
+heatmap.sig.genes(Cerebellum_DE_down, meta.method="maxP.OC", fdr.cut=0.05, color="GR")
+mtext("Cerebellum maxP.OC DEG DOWN", line = 1.5)
+
+heatmap.sig.genes(Cerebellum_DE_down, meta.method="minP.OC", fdr.cut=0.05, color="GR")
+mtext("Cerebellum minP.OC DEG DOWN", line = 1.5)
+
+heatmap.sig.genes(Cerebellum_DE_down, meta.method="Fisher.OC", fdr.cut=0.05, color="GR")
+mtext("Cerebellum Fisher.OC DEG DOWN", line = 1.5)
+dev.off()
+
+#Temporal Lobe
+pdf("Temporal_Lobe_DE_heatmaps.pdf")
+heatmap.sig.genes(Temporal_lobe_DE_up, meta.method="AW.OC", fdr.cut=0.05, color="GR")
+mtext("Temporal Lobe AW.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Temporal_lobe_DE_up, meta.method="maxP.OC", fdr.cut=0.05, color="GR")
+mtext("Temporal Lobe maxP.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Temporal_lobe_DE_up, meta.method="minP.OC", fdr.cut=0.05, color="GR")
+mtext("Temporal Lobe minP.OC DEG UP ", line = 1.5)
+
+heatmap.sig.genes(Temporal_lobe_DE_up, meta.method="Fisher.OC", fdr.cut=0.05, color="GR")
+mtext("Temporal Lobe Fisher.OC DEG UP ", line = 1.5)
+dev.off()
+
+##### COUNT DE NUMBERS #####
+# up regulated DE results
+
+count.DEnumber(Frontal_lobe_DE_up,
+               p.cut=0.05,
+               q.cut=0.05)
+
+count.DEnumber(Parietal_lobe_DE_up,
+               p.cut=0.05,
+               q.cut=0.05)
+
+count.DEnumber(Temporal_lobe_DE_up,
+               p.cut=0.05,
+               q.cut=0.05)
+
+count.DEnumber(Cerebellum_DE_up,
+               p.cut=0.05,
+               q.cut=0.05)
+
+# down regulated DE results
+
+count.DEnumber(Frontal_lobe_DE_down,
+               p.cut=0.05,
+               q.cut=0.05)
+
+count.DEnumber(Parietal_lobe_DE_down,
+               p.cut=0.05,
+               q.cut=0.05)
+
+# count.DEnumber(Temporal_lobe_DE_down,
+#                p.cut=0.05,
+#                q.cut=0.05)
+
+count.DEnumber(Cerebellum_DE_down,
+               p.cut=0.05,
+               q.cut=0.05)
+
+##### DE NUMBERS PER META_METHOD - PLOT #####
+
+setwd(Meta_DE_dir)
+
+pdf("DE_numbers_for_each_method.pdf")
+
+draw.DEnumber(Frontal_lobe_DE_up,
+              0.05,
+              FDR=T)
+mtext("Frontal Lobe UP DEG numbers in indivdual and Meta-analysis", line = 2, cex=1.2)
+
+draw.DEnumber(Frontal_lobe_DE_down,
+              0.05,
+              FDR=T)
+mtext("Frontal Lobe DOWN DEG numbers in indivdual and Meta-analysis", line = 2, cex=1.2)
+
+draw.DEnumber(Parietal_lobe_DE_up,
+              0.05,
+              FDR=T)
+mtext("Parietal Lobe UP DEG numbers in indivdual and Meta-analysis", line = 2, cex=1.2)
+
+draw.DEnumber(Parietal_lobe_DE_down,
+              0.05,
+              FDR=T)
+mtext("Parietal Lobe DOWN DEG numbers in indivdual and Meta-analysis", line = 2, cex=1.2)
+
+draw.DEnumber(Cerebellum_DE_up,
+              0.05,
+              FDR=T)
+mtext("Cerebellum UP DEG numbers in indivdual and Meta-analysis", line = 2, cex=1.2)
+
+draw.DEnumber(Cerebellum_DE_down,
+              0.05,
+              FDR=T)
+mtext("Cerebellum DOWN DEG numbers in indivdual and Meta-analysis", line = 2, cex=1.2)
+
+draw.DEnumber(Temporal_lobe_DE_up,
+              0.05,
+              FDR=T)
+mtext("Temporal Lobe UP DEG numbers in indivdual and Meta-analysis", line = 2, cex=1.2)
+
+dev.off()
+
+##### EXTRACT DEG PER BRAIN REGION ####
+
+# using  ind.tail="high" and ind.tail="low" gives same number of DEG using all meta-analysis methods - using only up-genes object
+
+Frontal_lobe_DE_AW.OC<-(as.data.frame(subset(Frontal_lobe_DE_up$meta.analysis$FDR, Frontal_lobe_DE_up$meta.analysis$FDR[,1]<=0.05)))[1]
+
+Parietal_lobe_DE_AW.OC<-(as.data.frame(subset(Parietal_lobe_DE_up$meta.analysis$FDR, Parietal_lobe_DE_up$meta.analysis$FDR[,1]<=0.05)))[1]
+
+Cerebellum_DE_AW.OC<-(as.data.frame(subset(Cerebellum_DE_up$meta.analysis$FDR, Cerebellum_DE_up$meta.analysis$FDR[,1]<=0.05)))[1]
+
+Temporal_lobe_DE_AW.OC<-(as.data.frame(subset(Temporal_lobe_DE_up$meta.analysis$FDR, Temporal_lobe_DE_up$meta.analysis$FDR[,1]<=0.05)))[1]
+
+dim(Temporal_lobe_DE_AW.OC)
+head(Temporal_lobe_DE_AW.OC)
+
+dim(Frontal_lobe_DE_AW.OC)
+head(Frontal_lobe_DE_AW.OC)
+
+dim(Parietal_lobe_DE_AW.OC)
+head(Parietal_lobe_DE_AW.OC)
+
+dim(Cerebellum_DE_AW.OC)
+head(Cerebellum_DE_AW.OC)
+
+##### META PATHWAY ANALYSIS #####
+
+setwd(Meta_Pathway_dir)
+
+# pathway database - file downloaded manually from website ("http://software.broadinstitute.org/gsea/downloads.jsp")
+pathway_database<-getGmt("c5.all.v5.1.symbols.gmt") 
+
+# FRONTAL LOBE
+# create empty list 
+Frontal_Lobe_pathwaydata<-vector(mode ="list", length = length(Frontal_lobe_no_AMP_QC_filtered))
+
+#make data in format for pathway analysis
+for(t1 in 1:length(Frontal_lobe_no_AMP_QC_filtered)) {
+  temp<-impute.knn(Frontal_lobe_no_AMP_QC_filtered[[t1]][[1]])$data
+  Frontal_Lobe_pathwaydata[[t1]]=list(x=temp, y=Frontal_lobe_no_AMP_QC_filtered[[t1]][[2]],
+                                      geneid=rownames(Frontal_lobe_no_AMP_QC_filtered[[1]][[1]]),
+                                      samplename=paste("sample", 1:ncol(Frontal_lobe_no_AMP_QC_filtered[[t1]][[1]]), sep=""))
+}
+
+# run pathway analysis
+Frontal_Lobe_pathway_MAPE<-MAPE(arraydata=Frontal_Lobe_pathwaydata, # data
+                                pathway.DB=pathway_database, # pathway data
+                                resp.type="twoclass", # case vs control
+                                stat="Fisher", # minP, maxP, rth, Fisher
+                                nperm=300, # n.o permutations
+                                permutation="sample", # "sample" or "gene" permutation
+                                size.min=5, # min pathway size considered
+                                size.max=500) # max pathway size considered
+
+head(Frontal_Lobe_pathway_MAPE)
+
+# check significant pathways
+subset(Frontal_Lobe_pathway_MAPE$qvalue, MAPE_I<1.1)
+
+#heatmap of pathways
+plotMAPE(Frontal_Lobe_pathway_MAPE, 
+         cutoff=1.1, 
+         MAPE.method="MAPE_I")
+
+# PARIETAL LOBE
+# create empty list 
+Parietal_Lobe_pathwaydata<-vector(mode ="list", length = length(Parietal_lobe_no_AMP_QC_filtered))
+
+#make data in format for pathway analysis
+for(t1 in 1:length(Parietal_lobe_no_AMP_QC_filtered)) {
+  temp<-impute.knn(Parietal_lobe_no_AMP_QC_filtered[[t1]][[1]])$data
+  Parietal_Lobe_pathwaydata[[t1]]=list(x=temp, y=Parietal_lobe_no_AMP_QC_filtered[[t1]][[2]],
+                                       geneid=rownames(Parietal_lobe_no_AMP_QC_filtered[[1]][[1]]),
+                                       samplename=paste("sample", 1:ncol(Parietal_lobe_no_AMP_QC_filtered[[t1]][[1]]), sep=""))
+}
+
+# run pathway analysis
+Parietal_Lobe_pathway_MAPE<-MAPE(arraydata=Parietal_Lobe_pathwaydata, # data
+                                 pathway.DB=pathway_database, # pathway data
+                                 resp.type="twoclass", # case vs control
+                                 stat="Fisher", # minP, maxP, rth, Fisher
+                                 nperm=300, # n.o permutations
+                                 permutation="sample", # "sample" or "gene" permutation
+                                 size.min=5, # min pathway size considered
+                                 size.max=500) # max pathway size considered
+
+head(Parietal_Lobe_pathway_MAPE)
+
+# check significant pathways
+subset(Parietal_Lobe_pathway_MAPE$qvalue, MAPE_I<1)
+
+#heatmap of pathways
+plotMAPE(Parietal_Lobe_pathway_MAPE, 
+         cutoff=1, 
+         MAPE.method="MAPE_I")
+
+# CEREBELLUM
+# create empty list 
+Cerebellum_pathwaydata<-vector(mode ="list", length = length(Cerebellum_no_AMP_QC_filtered))
+
+#make data in format for pathway analysis
+for(t1 in 1:length(Cerebellum_no_AMP_QC_filtered)) {
+  temp<-impute.knn(Cerebellum_no_AMP_QC_filtered[[t1]][[1]])$data
+  Cerebellum_pathwaydata[[t1]]=list(x=temp, y=Cerebellum_no_AMP_QC_filtered[[t1]][[2]],
+                                    geneid=rownames(Cerebellum_no_AMP_QC_filtered[[1]][[1]]),
+                                    samplename=paste("sample", 1:ncol(Cerebellum_no_AMP_QC_filtered[[t1]][[1]]), sep=""))
+}
+
+# run pathway analysis
+Cerebellum_pathway_MAPE<-MAPE(arraydata=Cerebellum_pathwaydata, # data
+                              pathway.DB=pathway_database, # pathway data
+                              resp.type="twoclass", # case vs control
+                              stat="Fisher", # minP, maxP, rth, Fisher
+                              nperm=300, # n.o permutations
+                              permutation="sample", # "sample" or "gene" permutation
+                              size.min=5, # min pathway size considered
+                              size.max=500) # max pathway size considered
+
+head(Cerebellum_pathway_MAPE)
+
+# check significant pathways
+subset(Cerebellum_pathway_MAPE$qvalue, MAPE_I<1)
+summary(Cerebellum_pathway_MAPE$qvalue[5])
+summary(Cerebellum_pathway_MAPE$qvalue[4])
+
+
+#heatmap of pathways
+plotMAPE(Cerebellum_pathway_MAPE, 
+         cutoff=1, 
+         MAPE.method="MAPE_I")
+
+# TEMPORAL LOBE
+# create empty list 
+Temporal_Lobe_pathwaydata<-vector(mode ="list", length = length(Temporal_lobe_no_AMP_QC_filtered))
+
+#make data in format for pathway analysis
+for(t1 in 1:length(Temporal_lobe_no_AMP_QC_filtered)) {
+  temp<-impute.knn(Temporal_lobe_no_AMP_QC_filtered[[t1]][[1]])$data
+  Temporal_Lobe_pathwaydata[[t1]]=list(x=temp, y=Temporal_lobe_no_AMP_QC_filtered[[t1]][[2]],
+                                       geneid=rownames(Temporal_lobe_no_AMP_QC_filtered[[1]][[1]]),
+                                       samplename=paste("sample", 1:ncol(Temporal_lobe_no_AMP_QC_filtered[[t1]][[1]]), sep=""))
+}
+
+# run pathway analysis
+Temporal_Lobe_pathway_MAPE<-MAPE(arraydata=Temporal_Lobe_pathwaydata, # data
+                                 pathway.DB=pathway_database, # pathway data
+                                 resp.type="twoclass", # case vs control
+                                 stat="Fisher", # minP, maxP, rth, Fisher
+                                 nperm=300, # n.o permutations
+                                 permutation="sample", # "sample" or "gene" permutation
+                                 size.min=5, # min pathway size considered
+                                 size.max=500) # max pathway size considered
+
+head(Temporal_Lobe_pathway_MAPE)
+
+# check significant pathways
+dim(subset(Temporal_Lobe_pathway_MAPE$qvalue, MAPE_I<0.9))
+dim(subset(Temporal_Lobe_pathway_MAPE$qvalue, MAPE_G<0.6))
+dim(subset(Temporal_Lobe_pathway_MAPE$qvalue, MAPE_P<0.6))
+
+#heatmap of pathways
+plotMAPE(Temporal_Lobe_pathway_MAPE, 
+         cutoff=0.9, 
+         MAPE.method="MAPE_I")
+
+subset(Temporal_Lobe_pathway_MAPE$qvalue, MAPE_I<0.9)
 
 ##### COMPILE REPORT #####
 
