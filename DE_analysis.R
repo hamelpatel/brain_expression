@@ -3,7 +3,7 @@
 ####                                                                                                                                  ####
 ###                                                                                                                                    ###
 ##                                                                                                                                      ##
-#                                                                DE ANALYSIS                                                             #
+#                                                               INDIVIDUAL DE ANALYSIS                                                             #
 ##                                                                                                                                      ##
 ###                                                                                                                                    ###
 ####                                                                                                                                  ####
